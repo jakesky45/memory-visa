@@ -478,18 +478,16 @@
 
     <p>Put together, every call takes the same path regardless of which tool it's actually reaching for:</p>
 
-    <pre class="diagram"><code>[ AI Client: Claude / Cursor / Kiro ]
-                     |
-                     v  (MCP tools/call + Cognito JWT)
-    +-----------------------------------------+
-    |            AgentCore Gateway            |
-    |  +-----------------------------------+  |
-    |  |  Policy Engine (Cedar Evaluation) |  |
-    |  +-----------------------------------+  |
-    +-----------------------------------------+
-                     |
-                     v  (Authorised requests only)
-    [ Gateway Target: Lambda / HTTP / Runtime ]</code></pre>
+    <div class="sketch col">
+      <div class="box wobble-a">AI Client<br><span class="sub">Claude / Cursor / Kiro</span></div>
+      <div class="arrow-down">&#9660;<span class="sub">MCP tools/call + Cognito JWT</span></div>
+      <div class="container-box">
+        <div class="container-label">AgentCore Gateway</div>
+        <div class="box wobble-b">Policy Engine<br><span class="sub">Cedar evaluation</span></div>
+      </div>
+      <div class="arrow-down">&#9660;<span class="sub">Authorised requests only</span></div>
+      <div class="box wobble-c">Gateway Target<br><span class="sub">Lambda / HTTP / Runtime</span></div>
+    </div>
 
     <h2 id="what-agentcore-ships">What AgentCore Ships, and Where It Stops</h2>
 
