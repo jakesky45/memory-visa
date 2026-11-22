@@ -387,7 +387,8 @@
     <a href="#closing-the-loop">Closing the loop</a>
     <a href="#what-a-caller-gets">whoami</a>
     <a href="#quickstart">Quickstart</a>
-    <a href="#where-this-leaves-things">What's left</a>
+    <a href="#staleness-risk">Staleness between writes</a>
+    <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
   </nav>
 
   <div class="main">
@@ -408,7 +409,8 @@
         <a href="#closing-the-loop">Closing the loop</a>
         <a href="#what-a-caller-gets">whoami</a>
         <a href="#quickstart">Quickstart</a>
-        <a href="#where-this-leaves-things">What's left</a>
+        <a href="#staleness-risk">Staleness between writes</a>
+    <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
       </nav>
     </details>
 
@@ -864,13 +866,15 @@
 
     <p>This whole setup is built for discovery and live demos, not production traffic. A handful of things make that explicit: on-demand DynamoDB billing instead of provisioned capacity, no NAT gateway on the network stack, and no point-in-time recovery on either table. If you want the Gateway's own per-request traces (Cedar decisions, interceptor runs, Lambda invocations) rather than just the aggregate metrics shown above, that's a separate opt-in - CloudWatch Transaction Search (CloudWatch console &rarr; Settings &rarr; Enable transaction search), billed on span ingestion - worth turning on deliberately for a demo session rather than left running by default.</p>
 
-    <h2 id="where-this-leaves-things">Where This Leaves Things</h2>
+    <h2 id="staleness-risk">One Open Risk: Staleness Between Writes</h2>
 
-    <p>One gap stays open, named rather than buried in a footnote: memory is only as fresh as the last explicit write. A fact like "Supplier X is banned under export control 7A994" sits in Memory because someone's agent called <code>put()</code> the moment it was true - nothing here tails a real system of record, and nothing notices or re-asserts it if the real classification changes later. The 31-day record expiry forces old facts to eventually drop out, but that's an expiry, not a correction. Staleness between writes is real and unaddressed.</p>
+    <p>One gap stays open, named rather than buried in a footnote: <strong>memory is only as fresh as the last explicit write.</strong> A fact like <em>"Supplier X is banned under export control 7A994"</em> sits in Memory because an agent called <code>put()</code> the moment it was true. Nothing here tails an upstream system of record, and nothing notices or re-asserts it if the real classification changes later. The 31-day record expiry forces old facts to eventually drop out, but expiry isn't a correction.</p>
 
-    <p>Everything else here you can check yourself, which is the point. Three days before this post went out, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a> - a different problem, runtime ingress rather than cross-domain memory grants, landing on the same mechanism anyway: a request interceptor extracting verified identity ahead of Cedar policy enforcement. Two teams arriving at the same primitive independently isn't a coincidence; it's what the platform rewards once identity propagation is taken seriously.</p>
+    <h2 id="bet-on-the-pattern">Bet on the Pattern, Not the Platform</h2>
 
-    <p>AgentCore itself is young - <a href="https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-agentcore-available">generally available</a> as of October 2025 - and the service it's already superseding, the original Bedrock Agents, <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html">closed to new customers</a> under ten months later. That's the actual pace of this space right now. Nothing here bets on AgentCore specifically staying put: Cedar, Cognito's OAuth, and MCP are open standards that outlive any one vendor's agent SDK. The part worth keeping if AgentCore reshapes itself again is the pattern, not the platform - verified identity, policy enforcement at the gateway, an external entitlements layer on top of static isolation. Swap in a different gateway, let every department bring its own agent framework, and that access-control story still holds.</p>
+    <p>Everything else here you can verify yourself. Three days before this post went out, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a> - solving runtime ingress rather than cross-domain memory grants, yet landing on the exact same primitive: a request interceptor extracting verified identity ahead of Cedar policy enforcement. Two teams converging on the same architecture independently is what happens once identity propagation is taken seriously.</p>
+
+    <p>That matters because this stack moves fast. AgentCore only hit <a href="https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-agentcore-available">general availability</a> in October 2025, and the original Bedrock Agents service <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html">closed to new customers</a> under ten months later. Nothing in <code>memory-visa</code> bets on any single managed runtime staying put: Cedar, OAuth, and MCP are open standards that outlive any one vendor's SDK. When the underlying runtime inevitably shifts again, the part that survives is the pattern - verified identity, policy enforcement at the gateway, and an external entitlements layer sitting on top of static isolation. Swap the gateway, let every department pick its own agent framework, and the boundary model still holds.</p>
 
     <p>Clone the repo, run <code>make eval</code>, and try to break it: request access as someone who shouldn't get it, approve your own request, replay a token after its window closes. If anything gets through that shouldn't, that's a real issue. Go fix it.</p>
 
