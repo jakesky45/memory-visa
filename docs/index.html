@@ -305,7 +305,29 @@
     border-left-color: var(--accent);
     border-style: dashed;
   }
-  .sketch .arrow-down { font-size: 1.3rem; margin: 0.1rem 0; line-height: 1; text-align: center; color: var(--muted); }
+  .sketch .arrow-down {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0.6rem 0;
+  }
+  .sketch .arrow-down::before {
+    content: "";
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 9px solid var(--muted);
+  }
+  .sketch .arrow-down .sub {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.74rem;
+    font-family: "Inter", sans-serif;
+    font-weight: 400;
+    color: var(--muted);
+    text-align: center;
+  }
 
   figure.shot { margin: 1.75rem 0 2rem; }
   figure.shot img { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; display: block; }
@@ -482,12 +504,12 @@
 
     <div class="sketch col">
       <div class="box wobble-a">AI Client<br><span class="sub">Claude / Cursor / Kiro</span></div>
-      <div class="arrow-down">&#9660;<span class="sub">MCP tools/call + Cognito JWT</span></div>
+      <div class="arrow-down"><span class="sub">MCP tools/call + Cognito JWT</span></div>
       <div class="container-box">
         <div class="container-label">AgentCore Gateway</div>
         <div class="box wobble-b">Policy Engine<br><span class="sub">Cedar evaluation</span></div>
       </div>
-      <div class="arrow-down">&#9660;<span class="sub">Authorised requests only</span></div>
+      <div class="arrow-down"><span class="sub">Authorised requests only</span></div>
       <div class="box wobble-c">Gateway Target<br><span class="sub">Lambda / HTTP / Runtime</span></div>
     </div>
 
@@ -512,11 +534,11 @@
 
     <div class="sketch col">
       <div class="box wobble-a">Maya requests access<br><span class="sub">into Legal's domain, with a reason</span></div>
-      <div class="arrow-down">&#9660;</div>
+      <div class="arrow-down"></div>
       <div class="box dashed-green wobble-b">GrantStore: pending<br><span class="sub">waiting on Liam</span></div>
-      <div class="arrow-down">&#9660;</div>
+      <div class="arrow-down"></div>
       <div class="box wobble-c">Liam approves<br><span class="sub">time-boxed window opens</span></div>
-      <div class="arrow-down">&#9660;</div>
+      <div class="arrow-down"></div>
       <div class="box wobble-a">Maya's namespace opens<br><span class="sub">then closes automatically</span></div>
     </div>
 
