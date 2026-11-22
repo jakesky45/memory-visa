@@ -55,11 +55,13 @@
   <text class="sub" x="520" y="338" text-anchor="middle">CUSTOM_JWT auth</text>
   <text class="sub" x="520" y="356" text-anchor="middle">Cedar ABAC enforcement</text>
 
-  <!-- actors -> gateway -->
-  <path class="edge" d="M190,168 L190,210 L442,210 L442,280" marker-end="url(#arrow)"/>
-  <path class="edge" d="M410,168 L410,250 L494,250 L494,280" marker-end="url(#arrow)"/>
-  <path class="edge" d="M630,168 L630,250 L546,250 L546,280" marker-end="url(#arrow)"/>
-  <path class="edge" d="M850,168 L850,210 L598,210 L598,280" marker-end="url(#arrow)"/>
+  <!-- actors -> gateway: each drops to a shared bus, one line enters the gateway -->
+  <path class="edge" d="M190,168 L190,235" marker-end="none"/>
+  <path class="edge" d="M410,168 L410,235" marker-end="none"/>
+  <path class="edge" d="M630,168 L630,235" marker-end="none"/>
+  <path class="edge" d="M850,168 L850,235" marker-end="none"/>
+  <path class="edge" d="M190,235 L850,235" marker-end="none"/>
+  <path class="edge" d="M520,235 L520,280" marker-end="url(#arrow)"/>
 
   <!-- cognito -> gateway -->
   <path class="edge" d="M290,330 L380,330" marker-end="url(#arrow)"/>
