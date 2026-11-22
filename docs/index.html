@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cross-Domain Access Grants on Bedrock AgentCore</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /*
+    Design plan
+    Layout: dashboard shell - sticky schematic sidenav (in-page contents) + gradient
+    hero + badge rail, then the article in a centered reading column.
+    Color: near-black graphite ground, amber (robot indicator light) to cyan (AWS/
+    tech) gradient accent, status dots in amber/cyan/ok/err.
+    Type: Space Grotesk for headings/nav/labels (geometric, technical), Inter for
+    body copy, system mono for code/terminals.
+  */
+  :root {
+    --bg: #0a0d12;
+    --bg-elev: #12161e;
+    --bg-elev-2: #171c26;
+    --fg: #e8ebf1;
+    --muted: #8b93a7;
+    --border: #242b38;
+    --code-bg: #11151c;
+    --accent: #ff8a3d;
+    --accent2: #35c9ff;
+    --accent-soft: rgba(255,138,61,0.14);
+    --ok: #4ade80;
+    --err: #ff6b6b;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+  }
+
+  /* ---------- shell: sidenav + main ---------- */
+  .shell {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    max-width: 1140px;
+    margin: 0 auto;
+  }
+  @media (max-width: 880px) {
+    .shell { display: block; }
+    .sidenav { display: none; }
+  }
+  .sidenav {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 2rem 1.1rem 2rem 1.5rem;
+    border-right: 1px solid var(--border);
+  }
+  .sidenav .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 700;
+    font-size: 0.98rem;
+    color: var(--fg);
+    margin-bottom: 1.75rem;
+    letter-spacing: 0.01em;
+  }
+  .sidenav .brand .chip {
+    width: 24px; height: 24px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    flex: 0 0 auto;
+  }
+  .sidenav .brand .chip svg { width: 15px; height: 15px; }
+  .sidenav .toc-label {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin: 0 0 0.6rem 0.5rem;
+  }
+  .sidenav a {
+    display: block;
+    padding: 0.4rem 0.55rem;
+    border-radius: 6px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+  .sidenav a:hover { background: var(--bg-elev-2); color: var(--fg); }
+
+  .mobile-toc {
+    display: none;
+    margin: 1.5rem max(16px, env(safe-area-inset-right,0px)) 0 max(16px, env(safe-area-inset-left,0px));
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  @media (max-width: 880px) { .mobile-toc { display: block; } }
+  .mobile-toc summary {
+    cursor: pointer;
+    padding: 0.8rem 1rem;
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .mobile-toc nav { padding: 0 1rem 1rem; display: grid; gap: 0.25rem; }
+  .mobile-toc a { color: var(--muted); text-decoration: none; font-size: 0.85rem; padding: 0.2rem 0; }
+  .mobile-toc a:hover { color: var(--fg); }
+
+  .main { min-width: 0; }
+  .content {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 0 max(16px, env(safe-area-inset-right,0px)) 6rem max(16px, env(safe-area-inset-left,0px));
+  }
+
+  /* ---------- hero ---------- */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    margin: 2rem 0 1.25rem;
+    padding: 2.1rem 1.9rem;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--accent) 0%, #ff5f6d 42%, var(--accent2) 100%);
+  }
+  .hero::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(45deg, rgba(10,13,18,0.06) 0 2px, transparent 2px 16px);
+    pointer-events: none;
+  }
+  .hero-icon {
+    width: 46px; height: 46px;
+    border-radius: 12px;
+    background: rgba(10,13,18,0.28);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 1rem;
+    position: relative;
+  }
+  .hero-icon svg { width: 25px; height: 25px; }
+  .hero h1 {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1.9rem;
+    line-height: 1.2;
+    color: #11131a;
+    margin: 0 0 0.35rem;
+    position: relative;
+  }
+  .hero .hero-sub {
+    font-weight: 600;
+    color: rgba(17,19,26,0.82);
+    font-size: 1.02rem;
+    margin: 0 0 0.3rem;
+    position: relative;
+  }
+  .hero .hero-tagline {
+    color: rgba(17,19,26,0.68);
+    font-size: 0.9rem;
+    margin: 0;
+    position: relative;
+  }
+
+  .badges { display: flex; flex-wrap: wrap; gap: 0.55rem; margin: 0 0 1.5rem; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 0.8rem;
+    color: var(--fg);
+  }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+
+  .repo-card {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin: 0 0 1.75rem;
+    font-size: 0.9rem;
+  }
+  .repo-card .repo-icon { flex: 0 0 auto; font-size: 1rem; }
+  .repo-card a { color: var(--accent2); font-family: "SF Mono", Menlo, Consolas, monospace; font-weight: 600; }
+  .repo-card .repo-desc { color: var(--muted); }
+
+  /* ---------- article typography ---------- */
+  h2 {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 2.75rem 0 1rem;
+    scroll-margin-top: 1.5rem;
+  }
+  p { margin: 0 0 1rem; }
+  strong { font-weight: 650; }
+  em { color: var(--muted); font-style: italic; }
+  a { color: var(--accent2); }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1.25rem 0 1.5rem;
+    font-size: 0.9rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.6rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--bg-elev-2);
+    font-weight: 650;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 0.85rem;
+  }
+  code {
+    background: var(--code-bg);
+    color: var(--accent2);
+    padding: 0.12em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    border: 1px solid var(--border);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-size: 0.86rem;
+  }
+  pre code { background: none; padding: 0; border: none; color: var(--fg); }
+  pre.diagram { font-size: 0.8rem; line-height: 1.3; color: var(--muted); }
+
+  .byline { color: var(--muted); font-size: 0.9rem; }
+
+  /* ---------- schematic diagrams (replaces hand-drawn sketch) ---------- */
+  .sketch { margin: 1.75rem 0 2rem; }
+  .sketch .col { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .sketch .row { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+  .sketch .box {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    border-radius: 8px;
+    padding: 0.75rem 1.05rem;
+    background: var(--bg-elev);
+    text-align: center;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 600;
+  }
+  .sketch .box .sub {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.74rem;
+    font-family: "Inter", sans-serif;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .sketch .wobble-a, .sketch .wobble-b, .sketch .wobble-c { transform: none; }
+  .sketch .container-box {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.6rem 1.2rem 1.2rem;
+    position: relative;
+    margin-bottom: 0.5rem;
+    background: rgba(53,201,255,0.03);
+  }
+  .sketch .container-label {
+    position: absolute;
+    top: -0.7rem;
+    left: 1rem;
+    background: var(--bg);
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent2);
+  }
+  .sketch .hatch { border-left-color: var(--accent); }
+  .sketch .dashed-green {
+    border-left-color: var(--accent);
+    border-style: dashed;
+  }
+  .sketch .arrow-down { font-size: 1.3rem; margin: 0.1rem 0; line-height: 1; text-align: center; color: var(--muted); }
+
+  figure.shot { margin: 1.75rem 0 2rem; }
+  figure.shot img { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; display: block; }
+  figure.shot figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; text-align: center; }
+
+  .terminal {
+    margin: 1.75rem 0 2rem;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #14171f;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  .terminal .titlebar {
+    background: #1b1f29;
+    padding: 0.55rem 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .terminal .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .terminal .dot.red { background: #ff5f56; }
+  .terminal .dot.yellow { background: #ffbd2e; }
+  .terminal .dot.green { background: #27c93f; }
+  .terminal .titletext { color: var(--muted); font-size: 0.78rem; margin-left: 0.5rem; }
+  .terminal pre {
+    margin: 0; border: none; border-radius: 0; background: transparent;
+    padding: 1rem 1.2rem 1.3rem; color: #d4d4d4; font-size: 0.85rem; line-height: 1.6; overflow-x: auto;
+  }
+  .terminal .prompt { color: var(--accent2); }
+  .terminal .tool { color: #c3a6ff; }
+  .terminal .ok { color: var(--ok); }
+  .terminal .err { color: var(--err); }
+  .terminal .dim { color: #70788c; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="sidenav">
+    <div class="brand">
+      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="#11131a" stroke-width="1.8"><path d="M12 8a4 4 0 100 8 4 4 0 000-8z"/><path d="M19.4 13.5a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V19.9a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2.1a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H8a1.65 1.65 0 001-1.51V2.1a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V8a1.65 1.65 0 001.51 1h.09a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
+      memory-visa
+    </div>
+    <div class="toc-label">Contents</div>
+    <a href="#why-share-memory">Why share memory</a>
+    <a href="#the-problem">The problem</a>
+    <a href="#terms">Getting on the same page</a>
+    <a href="#what-agentcore-ships">What AgentCore ships</a>
+    <a href="#lifecycle">The lifecycle</a>
+    <a href="#what-a-grant-unlocks">What a grant unlocks</a>
+    <a href="#maya-gets-her-fact">Maya gets her fact</a>
+    <a href="#six-properties">Six properties, proven offline</a>
+    <a href="#approval-ui">No bespoke UI</a>
+    <a href="#identity-binding">Identity binding</a>
+    <a href="#closing-the-loop">Closing the loop</a>
+    <a href="#what-a-caller-gets">whoami</a>
+    <a href="#quickstart">Quickstart</a>
+    <a href="#where-this-leaves-things">What's left</a>
+  </nav>
+
+  <div class="main">
+
+    <details class="mobile-toc">
+      <summary>Contents</summary>
+      <nav>
+        <a href="#why-share-memory">Why share memory</a>
+        <a href="#the-problem">The problem</a>
+        <a href="#terms">Getting on the same page</a>
+        <a href="#what-agentcore-ships">What AgentCore ships</a>
+        <a href="#lifecycle">The lifecycle</a>
+        <a href="#what-a-grant-unlocks">What a grant unlocks</a>
+        <a href="#maya-gets-her-fact">Maya gets her fact</a>
+        <a href="#six-properties">Six properties, proven offline</a>
+        <a href="#approval-ui">No bespoke UI</a>
+        <a href="#identity-binding">Identity binding</a>
+        <a href="#closing-the-loop">Closing the loop</a>
+        <a href="#what-a-caller-gets">whoami</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#where-this-leaves-things">What's left</a>
+      </nav>
+    </details>
+
+    <div class="content">
+
+    <header class="hero">
+      <div class="hero-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#11131a" stroke-width="1.8"><path d="M12 8a4 4 0 100 8 4 4 0 000-8z"/><path d="M19.4 13.5a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V19.9a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2.1a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H8a1.65 1.65 0 001-1.51V2.1a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V8a1.65 1.65 0 001.51 1h.09a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
+      <h1>Cross-Domain Access Grants on Bedrock AgentCore</h1>
+      <p class="hero-sub">memory-visa</p>
+      <p class="hero-tagline">Deliberate, temporary, human-approved access across internal AI agent boundaries.</p>
+    </header>
+
+    <div class="badges">
+      <span class="badge"><span class="dot" style="background:var(--accent)"></span>Cedar</span>
+      <span class="badge"><span class="dot" style="background:var(--accent2)"></span>Cognito</span>
+      <span class="badge"><span class="dot" style="background:var(--ok)"></span>DynamoDB Streams</span>
+      <span class="badge"><span class="dot" style="background:#c3a6ff"></span>MCP</span>
+      <span class="badge"><span class="dot" style="background:var(--err)"></span>Bedrock AgentCore</span>
+    </div>
+
+    <div class="repo-card">
+      <span class="repo-icon">&#128230;</span>
+      <span><a href="https://github.com/jakesky45/memory-visa">github.com/jakesky45/memory-visa</a> <span class="repo-desc">- CDK infrastructure, Cedar policies, MCP tool implementations, and an offline <code>make eval</code> suite you can run without an AWS account.</span></span>
+    </div>
+
+    <p>Three days before the Atlas-v2 ships, Maya hits a wall.</p>
+
+    <p>She's in Engineering at Robotinc. Her packaging manifest needs one specific fact from Legal's files: an export-control classification. She doesn't have access to it - it's Legal's domain, and for good reason most days of the year.</p>
+
+    <p>This is the actual test of any access-control system, and it's a more interesting one than "can I keep people out." Anyone can lock a door. The hard version is: can I let the right person in, on purpose, for a stated reason, for exactly as long as it takes, without leaving the door open behind them? Can I prove, afterward, exactly who let them in and why?</p>
+
+    <p>AWS Bedrock AgentCore already ships the "keep people out" half: Cedar policies, Cognito JWT claims, and per-tenant namespace isolation in Memory. It's solid and already shipped, so none of that gets reinvented here. What it doesn't ship is Maya's situation: a deliberate, temporary, audited crossing of a boundary that's supposed to hold every other day of the year.</p>
+
+    <p>That's the part memory-visa builds. Here we're exploring how this could look in practice, using some of AWS's own native tools rather than bolting on new infrastructure.</p>
+
+    <h2 id="why-share-memory">Why Share Memory At All</h2>
+
+    <p>If you're running more than one AI agent across your org, which most teams past a certain size already are, each agent's memory is usually its own island. Engineering's agent learns things Legal's agent will never see. Finance's agent starts from zero on a question Engineering already answered last quarter. Centralise that memory - one shared, namespaced store instead of five disconnected ones - and the payoff compounds: any agent can draw on what any other agent in the org already knows, not just its own slice.</p>
+
+    <p>The catch shows up the moment you actually try it. Centralised means every agent can now see everything, which is worse than the islands you started with - that's not a hypothetical, it's the first thing that breaks. memory-visa is the piece in between: shared by default stays isolated by default, and crossing that boundary is a deliberate, audited, time-boxed act, not a permanent hole knocked in the wall.</p>
+
+    <p>None of this requires standardising on one AI client, either. MCP means Maya keeps using Claude, Liam can be on Cursor, Priya on whatever ships next year - they're all calling the same tools behind the same Gateway, into the same memory. Bring your own agent; the memory and the access control are centralised, not the tool everyone's forced to open.</p>
+
+    <h2 id="the-problem">The Problem, Inside One Company</h2>
+
+    <p>Robotinc ships the Atlas-v2, their new warehouse robot. Four people, four defaults:</p>
+
+    <div class="sketch">
+      <div class="container-box">
+        <div class="container-label">Robotinc</div>
+        <div class="row">
+          <div class="box wobble-a"><strong>Maya</strong><br><span class="sub">Engineering</span></div>
+          <div class="box wobble-b"><strong>Liam</strong><br><span class="sub">Legal</span></div>
+          <div class="box wobble-c"><strong>Priya</strong><br><span class="sub">Finance</span></div>
+          <div class="box hatch wobble-a"><strong>Jordan</strong><br><span class="sub">contractor - external, one project, no department</span></div>
+        </div>
+      </div>
+    </div>
+
+    <p>The first three each see only their own department's memory and tools, nobody else's - correctly, on an ordinary day. Jordan starts narrower still, the way a contractor's access should look from day one rather than something retrofitted after the fact.</p>
+
+    <p>Today isn't an ordinary day for Maya - and "ask Liam to paste it into Slack" isn't an audit trail.</p>
+
+    <table>
+    <tr><th>Requirement</th><th>Failure mode if unmet</th></tr>
+    <tr>
+      <td>Department isolation</td>
+      <td>Maya reads Priya's confidential Q4 budget notes by accident, because nothing actually stops Engineering from reading Finance's notes.</td>
+    </tr>
+    <tr>
+      <td>Controlled cross-domain access</td>
+      <td>Maya needs Liam's classification before the shipment goes out. Permanent isolation makes that impossible; no isolation makes row one pointless.</td>
+    </tr>
+    </table>
+
+    <p>The same mechanism covers Jordan's trickier case too: when he needs an exception, he goes through the exact same grant workflow Maya does. Contractors should get the tightest defaults and the most audited exceptions - full-time status shouldn't be the baseline everyone starts from.</p>
+
+    <h2 id="terms">Getting on the Same Page</h2>
+
+    <p>If you're opening the repo for the first time, here is how the pieces fit together:</p>
+
+    <table>
+    <tr><th>Term</th><th>What it is</th></tr>
+    <tr><td><strong>Bedrock AgentCore</strong></td><td>AWS's managed runtime for AI agents. A <strong>Gateway</strong> fronts your tools behind one authenticated endpoint; <strong>Memory</strong> holds agent memory, namespaced per tenant, in two tiers - <strong>short-term</strong> (the raw event, written and readable immediately) and <strong>long-term</strong> (facts automatically extracted from short-term memory by a background process, searchable only once that extraction finishes); a <strong>Policy Engine</strong> evaluates access rules before a request reaches your code at all.</td></tr>
+    <tr><td><strong>Cedar</strong></td><td>The policy language AWS open-sourced for exactly this - <code>permit</code>/<code>forbid</code> statements over principal, action, and resource, default-deny, evaluated by the Policy Engine.</td></tr>
+    <tr><td><strong>Cognito</strong></td><td>The identity provider. Every caller authenticates here first; org and department claims ride along as JWT claims, which Cedar reads as tags on the principal, not plain attributes.</td></tr>
+    <tr><td><strong>MCP (Model Context Protocol)</strong></td><td>The open protocol an AI client uses to discover and call tools. <code>tools/list</code> says what's callable; <code>tools/call</code> invokes one. Client-agnostic by design - that's what makes bring-your-own-client possible at all.</td></tr>
+    <tr><td><strong>Gateway Target</strong></td><td>What the Gateway actually forwards a call to - a Lambda function, an HTTP endpoint, or another AgentCore Runtime. A target's real tools are what Cedar's own schema validates actions against.</td></tr>
+    </table>
+
+    <p>Put together, every call takes the same path regardless of which tool it's actually reaching for:</p>
+
+    <pre class="diagram"><code>[ AI Client: Claude / Cursor / Kiro ]
+                     |
+                     v  (MCP tools/call + Cognito JWT)
+    +-----------------------------------------+
+    |            AgentCore Gateway            |
+    |  +-----------------------------------+  |
+    |  |  Policy Engine (Cedar Evaluation) |  |
+    |  +-----------------------------------+  |
+    +-----------------------------------------+
+                     |
+                     v  (Authorised requests only)
+    [ Gateway Target: Lambda / HTTP / Runtime ]</code></pre>
+
+    <h2 id="what-agentcore-ships">What AgentCore Ships, and Where It Stops</h2>
+
+    <p>Before building a custom grant store, the obvious question is whether AgentCore already handles time-boxed access out of the box. It comes close: AWS ships <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html">Dogwood</a>, a stateful extension to Cedar that lets policies reason over session history (<a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal-authoring.html">authoring guide</a>; good background on the policy-session mechanics in <a href="https://sph.sh/en/posts/dogwood-temporal-policy-language/">sph.sh's writeup</a> and a practical walkthrough at <a href="https://subagentic.ai/howtos/how-to-write-your-first-temporal-policy-agentcore-dogwood/">subagentic.ai</a>).</p>
+
+    <p>Confirmed against AWS's docs, the catch is that Dogwood's history is strictly single-caller: even if two people pass the exact same session ID, AgentCore isolates their histories by principal.</p>
+
+    <ul>
+    <li>What it solves: "Did Maya call RunTests before calling Deploy?" One person, one session.</li>
+    <li>What it can't see: "Did Liam approve a grant unlocking Legal's files for Maya?" Two people, two separate sessions.</li>
+    </ul>
+
+    <p>An access grant is inherently a two-person handshake - one person asks, someone else approves. Because Dogwood can't look across callers, no amount of policy configuration will make it hold an approval.</p>
+
+    <p>That's why the grant lives in its own external table, <code>GrantStore</code>, backing ordinary Cedar ABAC. Static Cedar policies and JWT claims still enforce the baseline walls, unchanged; <code>GrantStore</code> sits on top as an audited exception layer for when someone needs to cross them.</p>
+
+    <h2 id="lifecycle">The Lifecycle</h2>
+
+    <p>Request, approve, use within the window, expire automatically, audit trail throughout. No manual cleanup step: expiry is checked lazily, the next time anyone asks rather than on a cron.</p>
+
+    <div class="sketch col">
+      <div class="box wobble-a">Maya requests access<br><span class="sub">into Legal's domain, with a reason</span></div>
+      <div class="arrow-down">&#9660;</div>
+      <div class="box dashed-green wobble-b">GrantStore: pending<br><span class="sub">waiting on Liam</span></div>
+      <div class="arrow-down">&#9660;</div>
+      <div class="box wobble-c">Liam approves<br><span class="sub">time-boxed window opens</span></div>
+      <div class="arrow-down">&#9660;</div>
+      <div class="box wobble-a">Maya's namespace opens<br><span class="sub">then closes automatically</span></div>
+    </div>
+
+    <p>No grant, no access. Approved or not, it's always Liam's call to make, and it always expires on its own.</p>
+
+    <h2 id="what-a-grant-unlocks">What a Grant Actually Unlocks (And a Bug We Caught Testing It)</h2>
+
+    <p>Scoped precisely: what a grant opens today is Memory - <code>put</code>/<code>retrieve</code> into the target namespace, nothing more. Robotinc also has one real department-scoped tool behind the Gateway, Engineering's <code>check_shipping_classification</code> (a stub that looks up a shipment's export-control status). Testing it live turned up a real bug, not just a gap:</p>
+
+    <ol>
+    <li>A Cedar policy exists to gate it by the caller's <code>department</code> tag, but it was sitting in <code>LOG_ONLY</code> mode - evaluating and logging, never actually blocking anyone.</li>
+    <li>Promoting it to <code>ACTIVE</code> to check denied <em>everyone</em>, including Maya in Engineering, not just Liam in Legal.</li>
+    <li>The reason: the Gateway's <code>CUSTOM_JWT</code> authorizer only ever validates Cognito access tokens, and access tokens carry no custom attributes at all - the same reason <code>IdentityInterceptor</code> has to call Cognito's <code>GetUser</code> separately, back in the identity section below. <code>principal.hasTag("department")</code> can therefore never be true, so the policy's exception could never have fired for anyone, in any deployment.</li>
+    </ol>
+
+    <p>It's back in <code>LOG_ONLY</code> now, reported honestly as such rather than left claiming a gate that doesn't work. <code>GrantStore</code> never touched this policy either way - that part was true all along.</p>
+
+    <p>That's one tool, and it turned out to be effectively unenforced. Separately, the project's own toolset model is grant-aware by design and actually works as built - a grant into a domain carries that domain's whole toolset alongside its Memory namespace, not Memory alone:</p>
+
+    <table>
+    <thead><tr><th>Department</th><th>Tools</th><th>Who has them with no grant</th></tr></thead>
+    <tbody>
+    <tr><td>Engineering</td><td><code>check_shipping_classification</code>, <code>generate_packaging_manifest</code>, <code>query_firmware_specs</code></td><td>Maya</td></tr>
+    <tr><td>Legal</td><td><code>search_contracts</code>, <code>check_export_control</code>, <code>log_compliance_note</code></td><td>Liam</td></tr>
+    <tr><td>Finance</td><td><code>query_budget</code>, <code>query_ma_targets</code></td><td>Priya</td></tr>
+    </tbody>
+    </table>
+
+    <p><code>allowed_tools()</code> (<code>src/agents/domain_config.py</code>) computes this live from the same claims and grant store every other check in this post relies on, confirmed two ways: the eval suite's own assertions offline, and a live <code>whoami</code> call (below) showing Jordan picking up all three Engineering tools the moment his grant into Engineering was active, then losing them again the moment it expired. None of that reaches the one real deployed Gateway tool from the paragraph above, though - <code>check_shipping_classification</code> exists only behind <code>EngineeringTools</code>, its own gating currently inert, with no connection to this table at all. Two tool models, deliberately not merged: one proven offline and grant-aware and confirmed working live, one live and currently ungated.</p>
+
+    <h2 id="maya-gets-her-fact">Maya Gets Her Fact</h2>
+
+    <p>Memory access is the thing a grant actually opens - worth showing working, not just asserted, same as everything else in this post. It wasn't working, at first, for two reasons that have nothing to do with grants or Cedar:</p>
+
+    <ol>
+    <li><code>MemoryExecutionRole</code> - the role AgentCore Memory assumes to run semantic extraction - had a trust policy and nothing else. No permission to invoke the Bedrock model extraction depends on. Every extraction attempt failed silently; a <code>retrieve</code> always came back empty, indistinguishable from "extraction hasn't finished yet."</li>
+    <li>Fixing that uncovered a second issue: extraction filed records under AWS's default namespace template (<code>/strategies/{strategyId}/actors/{actorId}/</code>), while this project's <code>retrieve()</code> queries the plain namespace string directly (<code>org_robotinc_dept_legal</code>). Two paths that never intersected. Overriding the strategy's namespace to <code>{actorId}</code> fixed it without touching a line of application code.</li>
+    </ol>
+
+    <p>Put and retrieve aren't MCP tools - that's Tier One, the HTTP passthrough target from earlier, invoked directly rather than discovered via <code>tools/list</code>. With both bugs fixed, here's the actual scenario from the top of this post, run for real. Liam writes the fact Maya needs:</p>
+
+    <pre><code>{"action": "put", "namespace": "org_robotinc_dept_legal",
+     "text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}</code></pre>
+    <pre><code>{"ok": true, "result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795364012656#508fa195"}}</code></pre>
+
+    <p>A minute or so later - real background extraction, not an instant write - Maya, holding the grant from earlier in this post, retrieves:</p>
+
+    <pre><code>{"action": "retrieve", "namespace": "org_robotinc_dept_legal",
+     "query": "X-7 battery pack export control classification"}</code></pre>
+    <pre><code>{"ok": true, "result": [
+      {"text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."},
+      {"text": "Supplier X is banned under export control classification 7A994 effective immediately (as of 2026-11-22)."}
+    ]}</code></pre>
+
+    <p>That first result is the fact from paragraph one. Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships - and the audit log backing it now records who asked, which namespace, and what they searched for, not just that some request happened:</p>
+
+    <pre><code>{"email": "maya@robotinc.example", "org": "robotinc", "departments": ["engineering"], "action": "retrieve", "namespace": "org_robotinc_dept_legal", "at": "2026-11-22T16:17:46Z", "query": "X-7 battery pack export control classification"}</code></pre>
+
+    <p>That <code>email</code> and <code>query</code> field didn't exist until this round trip forced the question - the log line used to carry neither, and its own <code>print()</code> calls were sitting in an unflushed stdout buffer regardless, a standard gotcha for a long-running, non-interactive Python process, fixed with <code>PYTHONUNBUFFERED=1</code>.</p>
+
+    <p>One honest caveat on how this demo is invoked, not papered over: Tier One takes <code>claims</code> directly in its request body - org, department, email - not a verified JWT. That's a narrower guarantee than everywhere else in this post. Cognito authenticates the <em>call</em> to the Gateway, but the orchestrator doesn't yet read department or org back out of that verified token itself - the same gap the code's own docstring names. The grant-and-tool layer (<code>request_access</code> through <code>whoami</code>) never has this problem; identity there comes from <code>IdentityInterceptor</code>'s token resolution, never the caller. Memory access through Tier One is the one place in this post where that's not yet true.</p>
+
+    <h2 id="six-properties">Six Properties, Proven Offline</h2>
+
+    <p>Six properties are proven end-to-end, offline, with no live AWS needed (<code>make eval</code>):</p>
+
+    <ol>
+    <li>Cross-org isolation</li>
+    <li>Within-org silo enforcement</li>
+    <li>Legitimate cross-team flow</li>
+    <li>Credential and PII scrubbing</li>
+    <li>The full grant lifecycle for an employee</li>
+    <li>The same lifecycle for a contractor with a narrower default</li>
+    </ol>
+
+    <p>That's the test suite doing the actual arguing, not a slide.</p>
+
+    <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
+
+    <p>A grant with nobody to approve it is just a request queue. The obvious answer is a Slack app with a real Approve/Deny button - but that needs an interactivity endpoint, signature verification, and its own identity-trust story (whose Slack account counts as "really Liam"?), which is a second, parallel security model next to the Cognito-verified one this whole post is about. Worth building later, maybe; not worth bolting onto a post arguing for <em>fewer</em> bespoke surfaces, not more.</p>
+
+    <p>The approver already has an AI client open - Claude, Cursor, Kiro, whatever they already reach for. MCP doesn't care which. Bring-your-own-client is the whole point of the protocol, built into the standard rather than bolted on for this project. If <code>approve_access</code> is a real tool that client can see and call, the approval step costs nothing extra to operate - no new surface, no new login, no admin request to file.</p>
+
+    <p>That's two different levels of "real," though, and only one of them is good enough:</p>
+
+    <ul>
+    <li><strong>Tier One (HTTP Passthrough)</strong> - the orchestrator fronted by the Gateway as an <code>http.agentcoreRuntime</code> passthrough target. Confirmed working end-to-end with a real OAuth token: client credentials, Cognito, bearer token, Gateway, Cedar, a real <code>InvokeAgentRuntime</code>, and a real Memory write. But it's passthrough. A real MCP client doing <code>tools/list</code> sees one HTTP-shaped target, not <code>request_access</code> and <code>approve_access</code> as discrete tools it can reason about and call on its own.</li>
+    <li><strong>Tier Two (Discrete MCP Tools + DynamoDB)</strong> - five separate tools, each with its own schema, registered on a Lambda-backed Gateway Target. Grant state moved out of the orchestrator's in-process <code>GrantStore</code> into DynamoDB, because a <code>tools/call</code> can land on a different, stateless Lambda invocation than the one before it - there's no shared Python process for in-memory state to survive in.</li>
+    </ul>
+
+    <p>Confirmed live, the same day this was built - a real <code>tools/list</code> against the deployed Gateway:</p>
+
+    <pre><code>AccessRequestTools___request_access
+    AccessRequestTools___list_pending
+    AccessRequestTools___approve_access
+    AccessRequestTools___deny_access
+    AccessRequestTools___revoke_access</code></pre>
+
+    <p>That fifth one is the break-glass path: pulling a grant back before its window would naturally close, using the same domain-owner check as approve and deny. It's not the "someone got fired" answer - that's Cognito's job, disabling the login outright. <code>revoke_access</code> only ever reaches into one temporary grant.</p>
+
+    <figure class="shot">
+      <img src="images/gateway-observability.jpg" alt="AgentCore Gateway observability overview showing 38 invocations, a 10.5% error rate, and a total cost of $0.00019">
+      <figcaption>Gateway invocation metrics - the error-rate spike is the adversarial denial tests.</figcaption>
+    </figure>
+
+    <h2 id="identity-binding">Identity Binding Without Trusting Tool Arguments</h2>
+
+    <p>None of these five tools take an email argument at all, which is deliberate. A request interceptor sits in front of the Gateway (a real AgentCore feature, not something bolted on) and resolves the caller's already-verified access token to their actual Cognito identity via <code>GetUser</code>, injecting it as the acting identity before the tool ever runs.</p>
+
+    <figure class="shot">
+      <img src="images/gateway-configuration.jpg" alt="AgentCore Gateway configuration page showing a Request Interceptor Lambda wired in, Policy engine enforcement mode set to Enforcement enabled, and Cognito as the inbound auth identity provider">
+      <figcaption>The Gateway's configuration - interceptor, enforcement, and Cognito auth.</figcaption>
+    </figure>
+
+    <p>Maya, Liam, and Priya each log in with their own real Cognito account - there's no shared service credential standing in for any of them.</p>
+
+    <figure class="shot">
+      <img src="images/cognito-users.jpg" alt="Amazon Cognito user pool console showing three confirmed, enabled users: priya, maya, and liam, each with their own verified @robotinc.example email">
+      <figcaption>The three Cognito users.</figcaption>
+    </figure>
+
+    <p>Tested adversarially over real MCP, no mocks - three calls against the same pending grant, same tool, different tokens, each in that person's own session:</p>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="titletext">claude &mdash; Priya's session</span>
+      </div>
+      <pre><span class="prompt">&gt; deny Liam's pending Legal grant: 178b1963-...</span>
+
+    <span class="tool">&#9679; deny_access(grant_id: "178b1963-...")</span>
+      <span class="err">&#10007; 403 "priya@robotinc.example does not own domain 'legal' in org 'robotinc'"</span></pre>
+    </div>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="titletext">claude &mdash; Maya's session</span>
+      </div>
+      <pre><span class="prompt">&gt; approve my own pending request: 178b1963-...</span>
+
+    <span class="tool">&#9679; approve_access(grant_id: "178b1963-...")</span>
+      <span class="err">&#10007; 403 "maya@robotinc.example does not own domain 'legal' in org 'robotinc'"</span></pre>
+    </div>
+
+    <p>That's the real <code>NotDomainOwnerError</code> text the code raises, verbatim. There's no field in the request either of them could fill in to dodge it, because the caller identity comes from the interceptor's own token resolution - never from anything the request itself supplies. Liam's own token is the one that actually succeeds, below. The approved grant sits in the real DynamoDB table, confirmed with a direct <code>scan</code> rather than just the API's own say-so.</p>
+
+    <figure class="shot">
+      <img src="images/dynamodb-audit-trail.jpg" alt="DynamoDB item explorer on the GrantsAuditTable showing two real rows for the same grant_id: a 'requested' event with actor empty and status pending, then an 'approved' event with actor liam@robotinc.example and status approved">
+      <figcaption>The GrantsAuditTable after the round trip.</figcaption>
+    </figure>
+
+    <p>Meanwhile, the old shared <code>client_credentials</code> token (still fine for the other targets) is locked out of all five of these tools entirely - they only work for a real person.</p>
+
+    <p>That's the actual demo: an approver, in their own Claude session, saying something like "approve Maya's pending request" - and having it actually work, because the tool is really there rather than stood in for. Liam's actual session looks like this:</p>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="titletext">claude</span>
+      </div>
+      <pre><span class="prompt">&gt; do I have any pending access requests?</span>
+
+    <span class="tool">&#9679; list_pending</span>
+      <span class="dim">1 pending request</span>
+      - maya@robotinc.example -&gt; Legal
+        "Export-control classification for the X-7 battery pack before Q4 shipment."
+        <span class="dim">requested 2h ago</span>
+
+    <span class="prompt">&gt; approve it</span>
+
+    <span class="tool">&#9679; approve_access(grant_id: "178b1963-...")</span>
+      <span class="ok">approved by liam@robotinc.example</span>
+      <span class="dim">window closes in 2h</span></pre>
+    </div>
+
+    <h2 id="closing-the-loop">Closing the Loop (And Testing Jordan)</h2>
+
+    <p>That session only happens if Liam remembers to open it. A DynamoDB Streams trigger closes that gap: every grant write - a new request, an approval, a denial - fires a nudge. Liam hears there's something waiting; Maya, who used to get silence either way, hears what happened to her request. Nothing in it is clickable, by design - it's a notification, not a second approval path.</p>
+
+    <p>That every grant write already lands on a stream is the more interesting part. A fuller workflow could sit on top of this same event with barely any new surface - Slack, Backstage, whatever a team already lives in, reacting to the same stream rather than replacing it. This post isn't making that case, just leaving the door open: the nudge above is enough to prove requester and approver both get closed loops, tested live in both directions.</p>
+
+    <p>The same tools hold for Jordan, too - the contractor from earlier, with the narrowest default in the system: no department claim at all, scoped to one project. He's a real Cognito user (<code>custom:org</code> only, no <code>custom:department</code>), and his round trip runs through those same five tools, no special-casing, exactly as <code>tests/eval_rbac_isolation.py::test_eval5</code> describes it. Live, over real MCP, in his own session:</p>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="titletext">claude &mdash; Jordan's session</span>
+      </div>
+      <pre><span class="prompt">&gt; request access into engineering, reason "arm module calibration specs for Q3", 4 hours</span>
+
+    <span class="tool">&#9679; request_access(target_org: "robotinc", target_department: "engineering", reason: "arm module calibration specs for Q3", duration_hours: 4)</span>
+      <span class="dim">grant_id: "a9f27e14-..."</span>
+      <span class="dim">status: pending</span></pre>
+    </div>
+
+    <p>And in Maya's, minutes later - Engineering's real owner, approving someone with no department claim at all:</p>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="titletext">claude &mdash; Maya's session</span>
+      </div>
+      <pre><span class="prompt">&gt; do I have any pending access requests?</span>
+
+    <span class="tool">&#9679; list_pending</span>
+      <span class="dim">1 pending request</span>
+      - jordan@contractor.example -&gt; Engineering
+        "arm module calibration specs for Q3"
+        <span class="dim">requested 4m ago</span>
+
+    <span class="prompt">&gt; approve it</span>
+
+    <span class="tool">&#9679; approve_access(grant_id: "a9f27e14-...")</span>
+      <span class="ok">approved by maya@robotinc.example</span>
+      <span class="dim">window closes in 4h</span></pre>
+    </div>
+
+    <p>Just a narrower starting point - nothing in <code>GrantStore</code>, Cedar, or the five tools knows or cares that Jordan isn't an employee.</p>
+
+    <h2 id="what-a-caller-gets">What a Caller Actually Gets</h2>
+
+    <p>That grant answers the exact question the matrix above poses, but a reader shouldn't have to take this post's word for what it unlocks. A sixth tool, <code>whoami</code>, reports a caller's own effective access live - no separate explanation, the object speaks for itself. Called with Jordan's grant still active:</p>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="titletext">claude &mdash; Jordan's session, moments after Maya approved</span>
+      </div>
+      <pre><span class="prompt">&gt; whoami</span>
+
+    <span class="tool">&#9679; whoami()</span>
+      {
+        "email": "jordan@contractor.example",
+        "org": "robotinc",
+        "department": null,
+        "memory": {
+          "static_namespaces": ["org_robotinc_user_jordan@contractor.example"],
+          "granted_namespaces": [
+            {"namespace": "org_robotinc_dept_engineering", "expires_at": "2026-11-21T23:29:01+00:00"}
+          ]
+        },
+        <span class="ok">"domain_tools": ["check_shipping_classification", "generate_packaging_manifest", "query_firmware_specs"],</span>
+        "live_gateway_tools": {
+          "EngineeringTools___check_shipping_classification": "callable by anyone right now - its gating policy is LOG_ONLY, not ACTIVE, and would deny everyone (not just other departments) if promoted, since the department tag it checks is never visible to Cedar on this auth path"
+        }
+      }</pre>
+    </div>
+
+    <p>The same call, from the same token, after the window closed:</p>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="titletext">claude &mdash; Jordan's session, after the grant expired</span>
+      </div>
+      <pre><span class="prompt">&gt; whoami</span>
+
+    <span class="tool">&#9679; whoami()</span>
+      {
+        "email": "jordan@contractor.example",
+        "org": "robotinc",
+        "department": null,
+        "memory": {"static_namespaces": ["org_robotinc_user_jordan@contractor.example"], "granted_namespaces": []},
+        <span class="err">"domain_tools": [],</span>
+        "live_gateway_tools": {
+          "EngineeringTools___check_shipping_classification": "callable by anyone right now - its gating policy is LOG_ONLY, not ACTIVE, and would deny everyone (not just other departments) if promoted, since the department tag it checks is never visible to Cedar on this auth path"
+        }
+      }</pre>
+    </div>
+
+    <p>Nothing re-issued, nothing re-authenticated - the three Engineering tools and the Memory namespace both disappeared on their own, the moment the window closed. <code>allowed_tools()</code> and <code>GuardedMemory</code> are agreeing on the same expiry because they read the same grant, not because two separate systems happen to look consistent in a demo.</p>
+
+    <p>That last field is also where testing <code>whoami</code> honestly paid off. It originally asserted the one real Gateway tool was department-gated, mirroring what <code>STATIC_DOMAIN_POLICY</code> was written to do. Checking that claim against real traffic (see "What a Grant Actually Unlocks," above) found the gate doesn't actually hold for anyone - so <code>whoami</code> now reports what's actually true, not what the policy was supposed to do. Built to show callers their own access, it ended up surfacing a bug in the system reporting it.</p>
+
+    <h2 id="quickstart">Quickstart</h2>
+
+    <p>The six security properties run offline, with no AWS account needed:</p>
+
+    <pre><code>git clone https://github.com/jakesky45/memory-visa.git && cd memory-visa
+    cd cdk && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt pytest
+    cd .. && PYTHONPATH=src python3 -m pytest tests/eval_rbac_isolation.py -v</code></pre>
+
+    <p>Standing up the live stack behind the round-trip above provisions real, billed AWS infrastructure - a separate step, not covered by <code>make eval</code>.</p>
+
+    <p><strong>1. Deploy the stack</strong> (Cognito, Gateway, Policy Engine, Lambdas, DynamoDB):</p>
+
+    <pre><code>cd cdk && source .venv/bin/activate
+    cdk deploy MemoryVisaAgentCore --require-approval never</code></pre>
+
+    <p><strong>2. Look up what the stack just created.</strong> The deploy writes its own routing info to SSM (names only - nothing secret lives here, the one genuinely sensitive value is the demo password set directly on the Cognito users in the next step and never written to CloudFormation or this template):</p>
+
+    <pre><code>USER_POOL_ID=$(aws ssm get-parameter --name /memory-visa/user-pool-id --query Parameter.Value --output text)
+    USER_CLIENT_ID=$(aws ssm get-parameter --name /memory-visa/user-client-id --query Parameter.Value --output text)
+    GATEWAY_URL=$(aws ssm get-parameter --name /memory-visa/gateway-url --query Parameter.Value --output text)</code></pre>
+
+    <p><strong>3. Give Maya a real Cognito login.</strong> <code>CfnUserPoolUser</code> can't set a password declaratively, so this is the one manual step - same for Liam and Priya:</p>
+
+    <pre><code>aws cognito-idp admin-set-user-password --user-pool-id "$USER_POOL_ID" \
+      --username maya --password '&lt;temporary-password&gt;' --permanent</code></pre>
+
+    <p><strong>4. Get Maya's own bearer token</strong> - not the shared service credential:</p>
+
+    <pre><code>TOKEN=$(aws cognito-idp initiate-auth --client-id "$USER_CLIENT_ID" --auth-flow USER_PASSWORD_AUTH \
+      --auth-parameters USERNAME=maya,PASSWORD='&lt;temporary-password&gt;' \
+      --query AuthenticationResult.AccessToken --output text)</code></pre>
+
+    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly is the proof, not the claim - same six tools as before, now scoped to Maya specifically instead of the shared service credential:</p>
+
+    <pre><code>curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+      | sed -n 's/^data: //p' | jq -r '.result.tools[].name'</code></pre>
+
+    <pre><code>AccessRequestTools___request_access
+    AccessRequestTools___list_pending
+    AccessRequestTools___approve_access
+    AccessRequestTools___deny_access
+    AccessRequestTools___revoke_access
+    AccessRequestTools___whoami</code></pre>
+
+    <p>A static token, deliberately. Cognito fully supports the cleaner OAuth <code>authorization_code</code> flow here, but Claude Code has a <a href="https://github.com/anthropics/claude-code/issues/90190">confirmed, open bug</a> where it omits the <code>scope</code> parameter when a protected resource's metadata advertises no scopes (AgentCore Gateway always advertises none), which Cognito rejects with <code>invalid_grant</code> on every token exchange. Not ours to fix - the static token sidesteps it entirely.</p>
+
+    <p>This whole setup is built for discovery and live demos, not production traffic. A handful of things make that explicit: on-demand DynamoDB billing instead of provisioned capacity, no NAT gateway on the network stack, and no point-in-time recovery on either table. If you want the Gateway's own per-request traces (Cedar decisions, interceptor runs, Lambda invocations) rather than just the aggregate metrics shown above, that's a separate opt-in - CloudWatch Transaction Search (CloudWatch console &rarr; Settings &rarr; Enable transaction search), billed on span ingestion - worth turning on deliberately for a demo session rather than left running by default.</p>
+
+    <h2 id="where-this-leaves-things">Where This Leaves Things</h2>
+
+    <p>One gap stays open, named rather than buried in a footnote: memory is only as fresh as the last explicit write. A fact like "Supplier X is banned under export control 7A994" sits in Memory because someone's agent called <code>put()</code> the moment it was true - nothing here tails a real system of record, and nothing notices or re-asserts it if the real classification changes later. The 31-day record expiry forces old facts to eventually drop out, but that's an expiry, not a correction. Staleness between writes is real and unaddressed.</p>
+
+    <p>Everything else here you can check yourself, which is the point. Three days before this post went out, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a>, describing a Gateway-fronted pattern for a different problem - runtime ingress, not cross-domain memory grants - that lands on the same mechanism: a REQUEST interceptor, invoked directly by the Gateway, extracting verified identity claims from a validated token for downstream injection, sitting in front of Cedar-based policy enforcement with CUSTOM_JWT inbound auth. That's <code>IdentityInterceptor</code> and <code>BASE_PERMIT_POLICY</code>, arrived at independently, by AWS, solving something else entirely. Two teams converging on the same primitive isn't a coincidence - it's what the platform rewards once you take identity propagation seriously.</p>
+
+    <p>Multi-tenant AI isolation is a solved problem; AWS ships it, so don't rebuild it. Time-boxed, human-approved, audited access isn't new either: it's standard practice in privileged access management, decades old. What's missing is that pattern applied to AI-agent-to-AI-agent memory and tool access, on a platform whose own native temporal-policy feature (<a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html">Dogwood</a>) is architecturally same-caller-only and can't do cross-person approval. memory-visa closes that gap with an external entitlements store, built alongside the platform rather than around it.</p>
+
+    <p>Clone the repo, run <code>make eval</code>, and try to break it: request access as someone who shouldn't get it, approve your own request, replay a token after its window closes. If anything gets through that shouldn't, that's a real issue. Go fix it.</p>
+
+    <p>Maya still gets her three days. She just doesn't spend any of them waiting on a ticket.</p>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>
