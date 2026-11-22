@@ -381,7 +381,6 @@
     <a href="#lifecycle">The lifecycle</a>
     <a href="#what-a-grant-unlocks">What a grant unlocks</a>
     <a href="#maya-gets-her-fact">Maya gets her fact</a>
-    <a href="#six-properties">Six properties, proven offline</a>
     <a href="#approval-ui">No bespoke UI</a>
     <a href="#identity-binding">Identity binding</a>
     <a href="#closing-the-loop">Closing the loop</a>
@@ -403,7 +402,6 @@
         <a href="#lifecycle">The lifecycle</a>
         <a href="#what-a-grant-unlocks">What a grant unlocks</a>
         <a href="#maya-gets-her-fact">Maya gets her fact</a>
-        <a href="#six-properties">Six properties, proven offline</a>
         <a href="#approval-ui">No bespoke UI</a>
         <a href="#identity-binding">Identity binding</a>
         <a href="#closing-the-loop">Closing the loop</a>
@@ -602,21 +600,6 @@
     <p>That <code>email</code> and <code>query</code> field didn't exist until this round trip forced the question - the log line used to carry neither, and its own <code>print()</code> calls were sitting in an unflushed stdout buffer regardless, a standard gotcha for a long-running, non-interactive Python process, fixed with <code>PYTHONUNBUFFERED=1</code>.</p>
 
     <p>One honest caveat on how this demo is invoked, not papered over: Tier One takes <code>claims</code> directly in its request body - org, department, email - not a verified JWT. That's a narrower guarantee than everywhere else in this post. Cognito authenticates the <em>call</em> to the Gateway, but the orchestrator doesn't yet read department or org back out of that verified token itself - the same gap the code's own docstring names. The grant-and-tool layer (<code>request_access</code> through <code>whoami</code>) never has this problem; identity there comes from <code>IdentityInterceptor</code>'s token resolution, never the caller. Memory access through Tier One is the one place in this post where that's not yet true.</p>
-
-    <h2 id="six-properties">Six Properties, Proven Offline</h2>
-
-    <p>Six properties are proven end-to-end, offline, with no live AWS needed (<code>make eval</code>):</p>
-
-    <ol>
-    <li>Cross-org isolation</li>
-    <li>Within-org silo enforcement</li>
-    <li>Legitimate cross-team flow</li>
-    <li>Credential and PII scrubbing</li>
-    <li>The full grant lifecycle for an employee</li>
-    <li>The same lifecycle for a contractor with a narrower default</li>
-    </ol>
-
-    <p>That's the test suite doing the actual arguing, not a slide.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 
@@ -818,7 +801,18 @@
 
     <h2 id="quickstart">Quickstart</h2>
 
-    <p>The six security properties run offline, with no AWS account needed:</p>
+    <p>Six properties are proven end-to-end, offline, with no live AWS needed:</p>
+
+    <ol>
+    <li>Cross-org isolation</li>
+    <li>Within-org silo enforcement</li>
+    <li>Legitimate cross-team flow</li>
+    <li>Credential and PII scrubbing</li>
+    <li>The full grant lifecycle for an employee</li>
+    <li>The same lifecycle for a contractor with a narrower default</li>
+    </ol>
+
+    <p>That's the test suite doing the actual arguing, not a slide:</p>
 
     <pre><code>git clone https://github.com/jakesky45/memory-visa.git && cd memory-visa
     cd cdk && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt pytest
@@ -865,6 +859,8 @@
     <p>A static token, deliberately. Cognito fully supports the cleaner OAuth <code>authorization_code</code> flow here, but Claude Code has a <a href="https://github.com/anthropics/claude-code/issues/90190">confirmed, open bug</a> where it omits the <code>scope</code> parameter when a protected resource's metadata advertises no scopes (AgentCore Gateway always advertises none), which Cognito rejects with <code>invalid_grant</code> on every token exchange. Not ours to fix - the static token sidesteps it entirely.</p>
 
     <p>This whole setup is built for discovery and live demos, not production traffic. A handful of things make that explicit: on-demand DynamoDB billing instead of provisioned capacity, no NAT gateway on the network stack, and no point-in-time recovery on either table. If you want the Gateway's own per-request traces (Cedar decisions, interceptor runs, Lambda invocations) rather than just the aggregate metrics shown above, that's a separate opt-in - CloudWatch Transaction Search (CloudWatch console &rarr; Settings &rarr; Enable transaction search), billed on span ingestion - worth turning on deliberately for a demo session rather than left running by default.</p>
+
+    <p>When you're done: <code>cdk deploy MemoryVisaAgentCore</code> also deploys its two dependency stacks (network, guardrails), so tearing down needs all three - <code>cd cdk &amp;&amp; cdk destroy --all</code> - or the Cognito pool and DynamoDB tables keep billing after the demo ends.</p>
 
     <h2 id="staleness-risk">One Open Risk: Staleness Between Writes</h2>
 
