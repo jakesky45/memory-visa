@@ -46,6 +46,8 @@ Deployed in the sandbox account, `eu-west-2`:
 
 ## Quickstart
 
+Needs: Python 3, Node.js (for CDK), the AWS CLI (configured with credentials), `jq`, `curl`.
+
 <details>
 <summary><strong>1. Offline proof</strong> - no AWS account needed</summary>
 
@@ -89,6 +91,18 @@ curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
 ```
 
 Same for `liam` and `priya` - `CfnUserPoolUser` can't set a password declaratively, so that one step is manual for each.
+
+</details>
+
+<details>
+<summary><strong>4. Tear down</strong> - stop the billing</summary>
+
+```bash
+cd cdk && source .venv/bin/activate
+cdk destroy --all
+```
+
+`cdk deploy MemoryVisaAgentCore` in step 2 also deploys its two dependency stacks (`MemoryVisaNetwork`, `MemoryVisaGuardrails`); `--all` tears down all three.
 
 </details>
 
