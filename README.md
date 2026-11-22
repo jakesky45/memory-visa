@@ -10,66 +10,14 @@ Static isolation keeps two organizations' - or two departments' - AI agents apar
 2. When someone needs a real exception - Maya (Engineering) needs an export-control fact from Legal's files before a shipment - she calls `request_access` with a reason and a duration.
 3. Legal's real domain owner (Liam) approves or denies it from his own AI client - no bespoke UI, just an MCP tool call he can already make.
 4. Within the window, both the Memory namespace and that domain's toolset open up for the requester. Past it, access reverts on its own - no manual cleanup step.
-5. Every transition is audited: who requested, who approved, when it expired. A DynamoDB Streams trigger posts a notification on every write, in both directions - the owner hears there's something pending, the requester hears the outcome.
+5. Every transition is audited: who requested, who approved, when it expired. A DynamoDB Streams trigger is wired up to post a notification on every write, in both directions - the owner would hear there's something pending, the requester would hear the outcome - once a real Slack webhook is configured; it isn't yet.
 6. A sixth tool, `whoami`, reports any caller's own effective access live: static namespaces, any active grant, and the domain toolset that grant carries.
 
 A contractor case proves the same mechanism holds for a narrower starting point: Jordan, external, scoped to one project, no department claim at all, goes through the identical grant workflow (`tests/eval_rbac_isolation.py::test_eval5`).
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Robotinc["Robotinc"]
-        Maya["Maya · Engineering"]
-        Liam["Liam · Legal"]
-        Priya["Priya · Finance"]
-        Jordan["Jordan · contractor, one project"]
-    end
-    subgraph Helios["Helios Biotech (eval suite only)"]
-        Sam["Sam · Engineering"]
-    end
-
-    Maya -- "1 . request_access" --> Access["access_requests.py\nrequest / list / approve / deny / revoke / whoami"]
-    Access -- "2 . pending" --> Grants[("GrantStore\nrequest / approve / expire / audit")]
-    Liam -- "3 . approve_access" --> Access
-    Grants -- "every write" --> Notifier["GrantNotifier\nDynamoDB Streams"]
-    Notifier --> Slack[("Slack\nIncoming Webhook")]
-
-    Maya -- "4 . put / retrieve" --> Gate["GuardedMemory\nnamespace + grant check"]
-    Gate -- "reads active grants" --> Grants
-    Gate -- "allowed request" --> AgentMem[("AgentCore Memory\nshort-term + long-term, semantic search")]
-
-    Gate -. "denied: no claim, no grant" .-> Deny["PermissionError"]
-
-    Sam -- "put / retrieve" --> Gate
-
-    subgraph AWS["Deployed in eu-west-2"]
-        Cognito["Cognito\ndepartment / org claims"]
-        Interceptor["IdentityInterceptor\nresolves caller via Cognito GetUser"]
-        PolicyEngine["AgentCore PolicyEngine"]
-        Gateway["AgentCore Gateway\nCUSTOM_JWT"]
-        Runtime["AgentCore Runtime\norchestrator"]
-    end
-    Cognito -. "JWT claims" .-> Gateway
-    Gateway -- "every tool call" --> Interceptor
-    Interceptor -- "injects verified email/org/department" --> Access
-    Gateway -- "ENFORCE" --> PolicyEngine
-    Runtime -. "hosts" .-> Access
-
-    classDef actor fill:#fff4ea,stroke:#e8701f,stroke-width:1.5px,color:#1a1a1a;
-    classDef service fill:#eaf9ff,stroke:#1d8fb3,stroke-width:1.5px,color:#1a1a1a;
-    classDef store fill:#fff4ea,stroke:#e8701f,stroke-width:2px,color:#1a1a1a;
-    classDef deny fill:#ffeceb,stroke:#d64545,stroke-width:1.5px,color:#1a1a1a;
-
-    class Maya,Liam,Priya,Jordan,Sam actor;
-    class Access,Gate,Notifier,Cognito,Interceptor,PolicyEngine,Gateway,Runtime service;
-    class Grants,AgentMem,Slack store;
-    class Deny deny;
-
-    style Robotinc fill:#fffaf5,stroke:#e8701f,stroke-width:1px;
-    style Helios fill:#f7f7f7,stroke:#999999,stroke-width:1px,stroke-dasharray: 4 3;
-    style AWS fill:#f3fbfe,stroke:#1d8fb3,stroke-width:1px;
-```
+![memory-visa architecture](docs/diagrams/architecture.svg)
 
 Static org/department isolation is the floor. Cedar policies and JWT claims handle it cleanly - that part is standard. The grant on top is what this repo contributes: an **external entitlements store** (`GrantStore`) backing ordinary Cedar ABAC, deliberately not built on AgentCore's [Dogwood](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html) temporal policies.
 
@@ -90,7 +38,7 @@ That was a near-miss worth recording. Dogwood's [session history](https://docs.a
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth, an `IdentityInterceptor` Lambda resolving every caller's real Cognito identity (email, org, department) before a tool ever runs |
 | EngineeringTools target | `READY` | one real tool, `check_shipping_classification` - a stub, meant to be gated by the `engineering` department tag. Its policy is deliberately `LOG_ONLY`: promoting it to `ACTIVE` was tested live and denied *everyone*, including engineering callers, because the Gateway's `CUSTOM_JWT` authorizer only ever sees Cognito access tokens, which carry no custom attributes - `principal.hasTag("department")` can never be true on this auth path. Reported honestly as inert rather than left claiming a gate that doesn't hold. Not wired to `GrantStore` either way |
 | AccessRequestTools target + DynamoDB | `READY` | six real, individually-discoverable MCP tools backed by one Lambda: `request_access`, `list_pending`, `approve_access`, `deny_access`, `revoke_access`, and `whoami` (reports a caller's own effective access live). State lives in DynamoDB, not the orchestrator's in-process `GrantStore`, since separate `tools/call` invocations share no Python process. Confirmed live: a real `tools/list` shows all six tools with their schemas; the full request → approve round trip works for both an employee and a contractor starting from a narrower default; three different tokens tried against the same pending grant got exactly the enforcement the code promises (two rejected with the real `NotDomainOwnerError` text, one succeeded); the approved grant sits in the real DynamoDB table, confirmed with a direct `scan` |
-| GrantNotifier + DynamoDB Streams | `READY` | fires on every grant write (not just creation) and posts to Slack via an Incoming Webhook - a `pending` write nudges the real domain owner with the exact command to approve or deny it; an `approved`/`denied` write tells the requester the outcome, closing a gap that used to leave them with silence either way. Confirmed live in both directions |
+| GrantNotifier + DynamoDB Streams | `READY`, Slack not configured | the Lambda, its DynamoDB Streams trigger, and the `ssm:GetParameter` IAM permission are deployed and fire on every grant write (not just creation). Its code posts to Slack via an Incoming Webhook - a `pending` write would nudge the real domain owner with the exact command to approve or deny it, an `approved`/`denied` write would tell the requester the outcome - but `/memory-visa/slack-webhook-url` was never set to a real URL, so nothing currently gets delivered anywhere |
 | AgentCore Memory | `ACTIVE` | pool-tenancy, one semantic strategy, 31-day record expiry. A real `put` → background extraction → `retrieve` round trip is confirmed working live, after fixing two bugs: `MemoryExecutionRole` had no permission to invoke the Bedrock model extraction depends on (every extraction attempt failed silently), and extraction filed records under AWS's default namespace template while this code queries the plain namespace string directly (two paths that never intersected). Both fixed; see `cdk/stacks/agentcore_stack.py` for the detail |
 | AgentCore Runtime | `READY`, confirmed working live both directly and through the gateway | The earlier 502 was `network_mode="VPC"` with no NAT gateway in this stack (a deliberate cost decision elsewhere) - no outbound route for the container to reach ECR or the Memory API at all. Fixed by switching to `network_mode="PUBLIC"`, AgentCore's own default, since network-level isolation was never this project's actual security boundary anyway (IAM, Cognito, Cedar, and `GuardedMemory` are) |
 
