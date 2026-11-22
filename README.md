@@ -23,7 +23,7 @@ Cedar policies and Cognito JWT claims handle static org/department isolation - t
 
 ## Status
 
-Offline, `make eval` runs six properties end to end against fakes: cross-org isolation, within-org silo enforcement, legitimate cross-team flow, credential/PII scrubbing, and the full grant lifecycle for both an employee and a contractor whose default access starts narrower.
+Offline, `make eval` runs six properties end to end against fakes: cross-org isolation, within-org silo enforcement, legitimate cross-team flow, credential scrubbing, and the full grant lifecycle for both an employee and a contractor whose default access starts narrower.
 
 Deployed in the sandbox account, `eu-west-2`:
 

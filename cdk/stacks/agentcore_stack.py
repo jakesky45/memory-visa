@@ -613,7 +613,7 @@ class AgentCoreStack(Stack):
             # see identity_interceptor.py). principal.hasTag("department") is therefore
             # always false, so this forbid's "unless" branch can never fire - LOG_ONLY
             # was masking a policy that was never actually enforceable as written, not a
-            # validated one waiting to be promoted. See docs/blog-cross-domain-grants.md.
+            # validated one waiting to be promoted. See docs/index.html.
             enforcement_mode="LOG_ONLY",
             validation_mode="FAIL_ON_ANY_FINDINGS",
             description="Denies Engineering-only tools to anyone without the engineering department claim",

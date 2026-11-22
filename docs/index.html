@@ -702,9 +702,9 @@
 
     <h2 id="closing-the-loop">Closing the Loop (And Testing Jordan)</h2>
 
-    <p>That session only happens if Liam remembers to open it. A DynamoDB Streams trigger closes that gap: every grant write - a new request, an approval, a denial - fires a nudge. Liam hears there's something waiting; Maya, who used to get silence either way, hears what happened to her request. Nothing in it is clickable, by design - it's a notification, not a second approval path.</p>
+    <p>That session only happens if Liam remembers to open it. A DynamoDB Streams trigger is wired up to close that gap: every grant write - a new request, an approval, a denial - fires on cue, ready to nudge Liam that something's waiting and tell Maya what happened to her request instead of leaving her with silence either way. Confirmed live as far as the trigger firing goes; the Slack webhook it posts to was never actually configured, so today the nudge fires into nothing. Nothing in it would be clickable either way, by design - it's meant to be a notification, not a second approval path.</p>
 
-    <p>That every grant write already lands on a stream is the more interesting part. A fuller workflow could sit on top of this same event with barely any new surface - Slack, Backstage, whatever a team already lives in, reacting to the same stream rather than replacing it. This post isn't making that case, just leaving the door open: the nudge above is enough to prove requester and approver both get closed loops, tested live in both directions.</p>
+    <p>That every grant write already lands on a stream is the more interesting part. A fuller workflow could sit on top of this same event with barely any new surface - Slack, Backstage, whatever a team already lives in, reacting to the same stream rather than replacing it. This post isn't making that case, just leaving the door open: the stream exists and fires correctly, which is most of the work; pointing it at a real destination is a configuration step away, not an architecture one.</p>
 
     <p>The same tools hold for Jordan, too - the contractor from earlier, with the narrowest default in the system: no department claim at all, scoped to one project. He's a real Cognito user (<code>custom:org</code> only, no <code>custom:department</code>), and his round trip runs through those same five tools, no special-casing, exactly as <code>tests/eval_rbac_isolation.py::test_eval5</code> describes it. Live, over real MCP, in his own session:</p>
 
@@ -807,7 +807,7 @@
     <li>Cross-org isolation</li>
     <li>Within-org silo enforcement</li>
     <li>Legitimate cross-team flow</li>
-    <li>Credential and PII scrubbing</li>
+    <li>Credential scrubbing</li>
     <li>The full grant lifecycle for an employee</li>
     <li>The same lifecycle for a contractor with a narrower default</li>
     </ol>
