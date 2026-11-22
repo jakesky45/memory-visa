@@ -25,7 +25,7 @@ That was a near-miss worth recording. Dogwood's [session history](https://docs.a
 
 ## What's actually true right now
 
-**Proven, not just written.** `make eval` runs six properties end to end against fakes, no live AWS needed: cross-org isolation, within-org silo enforcement, legitimate cross-team flow, credential/PII scrubbing, the full grant lifecycle for an employee (deny, request, approve, succeed within window, expire, deny again - audit trail intact throughout), and the same lifecycle for a contractor whose default access is narrower still.
+`make eval` runs six properties end to end against fakes, no live AWS needed: cross-org isolation, within-org silo enforcement, legitimate cross-team flow, credential/PII scrubbing, the full grant lifecycle for an employee (deny, request, approve, succeed within window, expire, deny again, with the audit trail intact throughout), and the same lifecycle for a contractor whose default access starts narrower.
 
 **Deployed and verified live** in the sandbox account, `eu-west-2`:
 
@@ -108,7 +108,7 @@ src/tools/       identity_interceptor.py (resolves a caller's real Cognito ident
                  check_shipping_classification_tool.py (the one real Engineering Gateway tool,
                  a stub)
 src/server.py    the orchestrator: /ping, /invocations, routes through the modules above
-tests/           the eval suite - the actual proof
+tests/           the eval suite - runs the six properties offline, no AWS account needed
 cdk/             network, guardrails, and agentcore stacks. Every property name here was verified
                  by introspecting the real SDK or a live deploy error, not guessed
 Dockerfile       the orchestrator's container image (arm64, PYTHONUNBUFFERED=1 - a long-running
