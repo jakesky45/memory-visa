@@ -553,7 +553,7 @@
     <ol>
     <li>A Cedar policy exists to gate it by the caller's <code>department</code> tag, but it was sitting in <code>LOG_ONLY</code> mode - evaluating and logging, never actually blocking anyone.</li>
     <li>Promoting it to <code>ACTIVE</code> to check denied <em>everyone</em>, including Maya in Engineering, not just Liam in Legal.</li>
-    <li>The reason: the Gateway's <code>CUSTOM_JWT</code> authorizer only ever validates Cognito access tokens, and access tokens carry no custom attributes at all - the same reason <code>IdentityInterceptor</code> has to call Cognito's <code>GetUser</code> separately, back in the identity section below. <code>principal.hasTag("department")</code> can therefore never be true, so the policy's exception could never have fired for anyone, in any deployment.</li>
+    <li>The reason: the Gateway's <code>CUSTOM_JWT</code> authorizer only ever validates Cognito access tokens, and access tokens carry no custom attributes at all - the same reason <code>IdentityInterceptor</code> has to call Cognito's <code>GetUser</code> separately, in the identity section below. <code>principal.hasTag("department")</code> can therefore never be true, so the policy's exception could never have fired for anyone, in any deployment.</li>
     </ol>
 
     <p>It's back in <code>LOG_ONLY</code> now, reported honestly as such rather than left claiming a gate that doesn't work. <code>GrantStore</code> never touched this policy either way - that part was true all along.</p>
@@ -848,7 +848,7 @@
       --auth-parameters USERNAME=maya,PASSWORD='&lt;temporary-password&gt;' \
       --query AuthenticationResult.AccessToken --output text)</code></pre>
 
-    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly is the proof, not the claim - same six tools as before, now scoped to Maya specifically instead of the shared service credential:</p>
+    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly is the proof, not the claim - all six tools, now scoped to Maya specifically instead of the shared service credential:</p>
 
     <pre><code>curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
