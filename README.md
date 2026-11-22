@@ -55,6 +55,20 @@ flowchart TB
     Interceptor -- "injects verified email/org/department" --> Access
     Gateway -- "ENFORCE" --> PolicyEngine
     Runtime -. "hosts" .-> Access
+
+    classDef actor fill:#fff4ea,stroke:#e8701f,stroke-width:1.5px,color:#1a1a1a;
+    classDef service fill:#eaf9ff,stroke:#1d8fb3,stroke-width:1.5px,color:#1a1a1a;
+    classDef store fill:#fff4ea,stroke:#e8701f,stroke-width:2px,color:#1a1a1a;
+    classDef deny fill:#ffeceb,stroke:#d64545,stroke-width:1.5px,color:#1a1a1a;
+
+    class Maya,Liam,Priya,Jordan,Sam actor;
+    class Access,Gate,Notifier,Cognito,Interceptor,PolicyEngine,Gateway,Runtime service;
+    class Grants,AgentMem,Slack store;
+    class Deny deny;
+
+    style Robotinc fill:#fffaf5,stroke:#e8701f,stroke-width:1px;
+    style Helios fill:#f7f7f7,stroke:#999999,stroke-width:1px,stroke-dasharray: 4 3;
+    style AWS fill:#f3fbfe,stroke:#1d8fb3,stroke-width:1px;
 ```
 
 Static org/department isolation is the floor. Cedar policies and JWT claims handle it cleanly - that part is standard. The grant on top is what this repo contributes: an **external entitlements store** (`GrantStore`) backing ordinary Cedar ABAC, deliberately not built on AgentCore's Dogwood temporal policies.
