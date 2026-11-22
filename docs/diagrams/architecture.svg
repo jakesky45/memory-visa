@@ -103,6 +103,6 @@
   <text class="edgeLabel" x="545" y="642" text-anchor="middle">every write</text>
 
   <!-- hero arrow: the actual grant mechanism -->
-  <path class="edgeAccent" d="M500,502 L500,528 L120,528 L120,560" marker-end="url(#arrowAccent)"/>
-  <text class="edgeLabelAccent" x="310" y="521" text-anchor="middle">active grant?</text>
+  <path class="edgeAccent" d="M500,502 L500,512 L120,512 L120,560" marker-end="url(#arrowAccent)"/>
+  <text class="edgeLabelAccent" x="310" y="506" text-anchor="middle">active grant?</text>
 </svg>
