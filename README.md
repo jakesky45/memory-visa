@@ -71,9 +71,9 @@ flowchart TB
     style AWS fill:#f3fbfe,stroke:#1d8fb3,stroke-width:1px;
 ```
 
-Static org/department isolation is the floor. Cedar policies and JWT claims handle it cleanly - that part is standard. The grant on top is what this repo contributes: an **external entitlements store** (`GrantStore`) backing ordinary Cedar ABAC, deliberately not built on AgentCore's Dogwood temporal policies.
+Static org/department isolation is the floor. Cedar policies and JWT claims handle it cleanly - that part is standard. The grant on top is what this repo contributes: an **external entitlements store** (`GrantStore`) backing ordinary Cedar ABAC, deliberately not built on AgentCore's [Dogwood](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html) temporal policies.
 
-That was a near-miss worth recording. Dogwood's session history is scoped to one caller's own session - confirmed against AWS's own docs, two different principals supplying the same session ID get isolated histories. It can answer "did I call RunTests before Deploy." It cannot answer "did a different person approve something that unlocks my request." A grant is inherently cross-person, so it stays outside Dogwood, as an external store.
+That was a near-miss worth recording. Dogwood's [session history](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal-authoring.html) is scoped to one caller's own session - confirmed against AWS's own docs, two different principals supplying the same session ID get isolated histories (background on the mechanics in [sph.sh's writeup](https://sph.sh/en/posts/dogwood-temporal-policy-language/) and a practical walkthrough at [subagentic.ai](https://subagentic.ai/howtos/how-to-write-your-first-temporal-policy-agentcore-dogwood/)). It can answer "did I call RunTests before Deploy." It cannot answer "did a different person approve something that unlocks my request." A grant is inherently cross-person, so it stays outside Dogwood, as an external store.
 
 ## What's actually true right now
 
