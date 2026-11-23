@@ -55,7 +55,7 @@ not need one.
 | 5 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
 | 6 | Claude | ~~Provenance on results, and reads in the audit table (N2)~~ **Done, deployed and proven live** | "N2: provenance and the audit trail" |
 | 7 | Claude | ~~Published facts, the second way to share (N8)~~ **Done, deployed and proven live** | "N8: published facts" |
-| 8 | Jake | Search across every namespace the caller may read (N7): written and tested offline. Deploy it and run the check | "N7: one search across what you may read" |
+| 8 | Claude | ~~Search across every namespace the caller may read (N7)~~ **Done, deployed and proven live.** Found a real pre-existing bug along the way (Q4): a caller's own user namespace can't be read, ever - M8's redesign, not a small fix | "N7: one search across what you may read" |
 | 8a | Jake | Stop GitHub serving the old commits that hold the account and policy IDs: ask GitHub Support to remove them, or delete the repository and push it again. Then delete `/tmp/memory-visa-before-scrub.bundle` on the first machine | U9 |
 | 8b | Jake | Say if you want the proof that IAM refuses a direct record write outside a published namespace (P6). Claude writes the script | "N7: one search across what you may read" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
@@ -102,7 +102,8 @@ Look at this again when a model call can succeed.
 
 ### N7: one search across what you may read
 
-Written 23 November 2026. Tested offline; not deployed.
+Written 23 November 2026. **Deployed and proven live the same day - and it surfaced a real,
+pre-existing bug this project never happened to exercise before (Q4).**
 
 | Change | What it does |
 |---|---|
@@ -113,33 +114,46 @@ Written 23 November 2026. Tested offline; not deployed.
 | The agent | Leaves out the namespace by default |
 | Metadata on a result | AgentCore's own `x-amz-...` fields are left out, so `metadata` is only the source of the fact |
 
-**Not proven**
+**Q4, found running this live (not anticipated here): a caller's own user namespace cannot
+be read at all.** `RetrieveMemoryRecords` rejects it: `ValidationException: Value at
+'namespace' failed to satisfy constraint: Member must satisfy regular expression pattern:
+[a-zA-Z0-9/*][a-zA-Z0-9-_/*]*(?::[a-zA-Z0-9-_/*]+)*[a-zA-Z0-9-_/*]*` - no `@` anywhere in
+that pattern, and `org_robotinc_user_maya@robotinc.example` has one, because the namespace
+convention embeds the caller's email address (M8). This was never caught before because
+nothing in this project had called `memory_search` against a bare user namespace until N7's
+fan-out tried every namespace a caller may read, including their own. Two different things
+happen depending on how it's reached:
+- Through `retrieve_all` (no `namespace` given): caught per namespace, reported in `failed`,
+  the rest of the search still returns. This is why N7's own behaviour above is correct.
+- Asked for directly (`memory_search` with that exact namespace): unhandled - `ValidationException`
+  is not one of the exception types `access_request_tools.py`'s handler catches, so it reaches
+  the caller as a bare `"An internal error occurred. Please retry later."`, no explanation.
 
-| # | Not proven | If it fails |
-|---|---|---|
-| Q1 | The Gateway accepts `memory_search` with no `namespace` after the schema change | Send me the error |
-| Q2 | How long a search across three or four namespaces takes. Each is one `AssumeRole` and one search, and each scans the grants table (N5) | Send me the time. If it is over two seconds, I will issue the visas side by side |
-| Q3 | Scores from different namespaces compare well enough to rank together | Send me one answer with its scores |
-| P6 | IAM refuses a direct record write outside a published namespace. The N8 run proved the allowed case only; the Python refuses first, so no tool call can reach the IAM line | A small script like `demo/visa_credentials_demo.py`. I will write it if you want the proof on stage |
+**Not fixed - this is the M8 redesign (hierarchical namespaces), not a small patch.** Until
+then: a person's own conversational memory is only reachable through the fan-out search
+(where the failure is silent and harmless), never by naming it directly.
 
-**To deploy and check.** No new image is needed. Docker must be running for the bundling.
+**Run 23 November 2026, against the deployed stack:**
 
-```bash
-make eval                                   # expect: 104 passed
-cd cdk && cdk diff MemoryVisaAgentCore      # expect: the tools Lambda code and timeout, and the memory_search tool's description and schema
-cdk deploy MemoryVisaAgentCore && cd ..
-
-time call "$MAYA" memory_search '{"query":"X-7 classification"}'
-# expect: Legal's published fact, with namespace org_robotinc_published and access {"via":"published"};
-#         "searched" lists Maya's own namespace, org_robotinc_dept_engineering and org_robotinc_published;
-#         org_robotinc_dept_legal is not in "searched"; metadata has no x-amz fields
-
-# With an approved grant for Maya on Legal:
-call "$MAYA" memory_search '{"query":"X-7"}'
-# expect: "searched" now has org_robotinc_dept_legal, and its records say access via grant
-
-call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7"}'       # one namespace still works as before
 ```
+Maya searches with no namespace: Legal's published fact (access "published"), searched =
+  [org_robotinc_dept_engineering, org_robotinc_published], failed = [her own namespace,
+  ValidationException] - 4.46s
+Maya searches org_robotinc_dept_engineering directly: 200, works as before (0.97s)
+Maya requests Legal, Liam approves (6 minutes)
+Maya searches with no namespace again: five records across org_robotinc_published and
+  org_robotinc_dept_legal, ranked by score, Legal's records correctly say access "grant"
+  with the grant_id, approver and expiry - 2.41s
+```
+
+Q1, Q2 and Q3 are all answered by that run: the Gateway accepted the schema change with no
+error; three and four namespaces took 2-4 seconds, not alarming but not instant either - no
+need yet to issue visas side by side; and scores across the published namespace and a
+grant-scoped department namespace ranked sensibly against each other (the published fact
+came first both times).
+
+P6 (IAM refuses a direct write outside a published namespace) is still unverified - say if
+you want that proof script.
 
 ### N8: published facts
 
@@ -720,7 +734,7 @@ In this order. Each is one change with its own tests.
 | N2 | Results carry provenance: record ID, namespace, time, score, and how the caller was allowed. Reads and writes go to the audit table with the outcome and the grant ID | M4, M10, S9 | **Done, deployed and proven live** (12 tests). The author is in the audit trail, not on the record: that needs N9. See "N2: provenance and the audit trail" |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
 | N6 | An agent that calls a model and uses memory in a conversation | Scale | **Written and tested offline** (17 tests). Not deployed, not run against a real model. See "Stage 3: the agent" |
-| N7 | Search across every namespace the caller may read | M7 | **Written and tested offline** (7 tests). Not deployed. See "N7: one search across what you may read" |
+| N7 | Search across every namespace the caller may read | M7 | **Done, deployed and proven live** (7 tests). Found Q4 (a user's own namespace can't be read - M8) along the way. See "N7: one search across what you may read" |
 | N8 | One more sharing pattern: a published fact | Scale, S6 | **Done, deployed and proven live** (14 tests). Found and fixed a real SDK-version bug along the way (P5). Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
 | N10 | Claims in the access token; the Cedar `forbid` made active | C1 | To do. Would also carry projects (S6) |
