@@ -166,9 +166,22 @@ script expects. Three notes:
   ID failing validation, which is the cost of having a temporal policy on an engine.
 - Check 5 is useful by itself: a tool that fails is not recorded as a `response`, so a
   policy can gate on "the check succeeded" with no output schema at all.
-- The summary lines are recorded here, not the raw output. The raw output would show that
-  B's own check in check 4 was allowed, which the conclusion depends on. If you still have
-  it, paste it in.
+- The summary lines are recorded here, not the raw output. The raw output confirms it - the
+  conclusion does not rest on an assumption:
+
+```
+ 4. B: check_grant in session X. Then A: visa_read_a in session X
+    expected DENY, got DENY
+    {"code": -32002, "message": "Tool Execution Denied: Tool call not allowed due to policy
+    enforcement [No policy applies to the request (denied by default).]"}
+    (B's check: ALLOW). DENY = sessions are per caller, as the AWS page says.
+    ALLOW = one session holds two callers.
+```
+
+  B's own `check_grant` call, in session X, was itself `ALLOW` - the call happened and
+  completed, so there was a real event for a policy to find. A's `visa_read_a` in that same
+  session was refused anyway. That is what makes check 4 a real test of session isolation,
+  not a test of whether B's call ran at all.
 
 **Decision: not built into the main Gateway.** The policy's window is fixed in its text,
 so it is less exact than the IAM deadline; it cannot see a revocation; and every request
