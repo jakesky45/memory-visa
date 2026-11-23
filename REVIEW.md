@@ -25,7 +25,7 @@ Four stages. Nothing in a later stage is built until the one before it is proven
 | 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | **Run, and blocked.** The agent, the Gateway path and a real code bug are proven. The model call itself is blocked by an org policy - see "Fourth review: the stage 3 run" |
 | 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
 
-### Third review: commits `0091dbf` and `4b31130`
+### Third review: commits `0091dbf` and `e34b8f4`
 
 Stage 2 ran, and the result that matters is in: **AWS itself refuses a read outside the
 namespace and after the window.** The idea holds. Stage 3 can start.
@@ -33,7 +33,7 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 | # | Severity | Finding | Fix |
 |---|---|---|---|
 | T1 | High | **The "Gateway bug" (S12) is the shell.** A valid response printed with zsh's `echo` gives the exact broken string that was published as proof. The claim was in the blog, the README, this file and a commit message | **Confirmed.** The one-minute check in S12 passed: `curl -o` straight into Python parses clean, top level and nested. S12 closed below |
-| T2 | Medium | **The sandbox account ID was in this public file.** `cdk/app.py` says the account ID is never in git | Removed from this file. It is still in the history of `4b31130` |
+| T2 | Medium | **The sandbox account ID was in this public file.** `cdk/app.py` says the account ID is never in git | Removed from this file, and from the git history on 23 November 2026 (U9) |
 | T3 | Medium | **The Guardrail has not seen a secret live.** The one live write was plain text. Masking and blocking are proven offline only | **Checked.** A fake access key, written live, was gone by the time it came back through search - extraction reworded it to "(key value omitted for security)", no raw or masked key text anywhere in the result. A fake private key, written live, came back `422 "this content may not be stored: the Guardrail blocked it"`, and nothing was stored. Both as designed |
 | T4 | Low | **Which namespace form IAM matched is not recorded.** A8 line 1 was allowed, so one of the two forms in the policy matched. Knowing which lets the other be removed | **Checked, and the answer is odd: both matched independently.** A session policy naming only `/org_robotinc_dept_legal/` allowed the read; a separate one naming only the bare `org_robotinc_dept_legal` also allowed it. AgentCore's `bedrock-agentcore:namespace` condition key appears to match this namespace in either representation - I don't have a documented explanation for why, only the two results. Listing both forms in `namespace_condition_values` is still the safe choice; there's no evidence either is the one doing the work |
 | T5 | Low | **S5 is closed.** The Lambda's built-in AWS SDK knows the AgentCore API: the live write and search worked | None |
@@ -42,11 +42,20 @@ The three live checks above are done (T3, T4, S12) - see each row for the result
 
 ### What now
 
-| Who | What | Where |
-|---|---|---|
-| Jake | Get the Claude model block lifted, or confirm which Anthropic model (if any) this account's SCP allows (U2) | "Fourth review: the stage 3 run" |
-| Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
-| Claude | Once a model works: finish demo beats 1-4 live, then provenance and reads in the audit table (N2), published facts (N8), search across namespaces (N7) | "Next to build" |
+The agent is built. It cannot be shown until a model can be called. So the plan has two
+tracks: Jake unblocks the model, and Claude builds what does not need a model.
+
+| Order | Who | What | Where |
+|---|---|---|---|
+| 1 | Jake | On the other machine: do not push. Run `git fetch origin && git reset --hard origin/main` (the history was rewritten, U9) | "Fourth review" |
+| 2 | Jake | Deploy, then run the HTTP/1.1 check (U8) | "Fourth review" |
+| 3 | Jake | Unblock a model. Ask the Organization's administrator for a policy exception and for access to Claude Opus 5.5 or Sonnet 5.5 in `eu-west-2`. If that will take more than a few days, use a personal AWS account for the demo | U2/U3 |
+| 4 | Jake | Meanwhile, prove the agent with an API key: `demo/agent_chat.py --provider anthropic`, runbook steps 3 and 4 | "Stage 3: the agent" |
+| 5 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
+| 6 | Claude | Provenance on results, and reads in the audit table (N2). No model needed | "Next to build" |
+| 7 | Claude | Published facts, the second way to share (N8). No model needed | "Next to build" |
+| 8 | Claude | Search across every namespace the caller may read (N7) | "Next to build" |
+| 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
 
@@ -70,7 +79,7 @@ Two more points from reading this run:
 | # | Severity | Finding | Fix |
 |---|---|---|---|
 | U8 | Medium | **The HTTP/2 conclusion was recorded before the cause was found** (the same pattern as S12). The header lookup explains the result without any Gateway behaviour | Deploy the interceptor fix, then run the check below. If HTTP/1.1 now returns the identity, say so in U6 and the client can go back to the standard library |
-| U9 | Medium | **The managing Organization's account ID and policy ID were in this public file** (the same rule as T2) | Removed from this file. They are still in the history of `84ba4b6` |
+| U9 | Medium | **The managing Organization's account ID and policy ID were in this public file** (the same rule as T2) | Removed from this file and from the git history, with the sandbox account ID (T2). The history from stage 2 onward was rewritten and force-pushed on 23 November 2026, so the commit IDs changed. GitHub can still serve the old commits by their full ID until it removes them: ask GitHub Support to do that, or delete the repository and push it again |
 
 The U8 check, after `cdk deploy MemoryVisaAgentCore`:
 
@@ -229,7 +238,7 @@ See below.
 
 ### S12. The "invalid JSON" from the Gateway is the shell, not the Gateway
 
-Recorded in `4b31130` as: the Gateway under-escapes a tool result, so every `tools/call`
+Recorded in `e34b8f4` as: the Gateway under-escapes a tool result, so every `tools/call`
 response is invalid JSON, and it is AWS's bug. **Third review, same day: that conclusion is
 almost certainly wrong, and the public claim is withdrawn** (blog, README and this section
 corrected).
@@ -249,7 +258,7 @@ a JSON string, so its inner quotes arrive as `\\\"`; after `echo` they are `\\"`
 an escaped backslash and then a bare quote. That is exactly "escapes the backslash but not
 the quote that follows it".
 
-Why the two checks in `4b31130` did not catch it:
+Why the two checks in `e34b8f4` did not catch it:
 
 - "A direct Lambda invoke returns correct JSON": `aws lambda invoke` writes to a file, so the
   bytes never passed through `echo`.
