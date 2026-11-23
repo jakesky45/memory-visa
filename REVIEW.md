@@ -843,6 +843,24 @@ primitives; this is the layer you add on top, and it is built from open standard
   or Verified Permissions. A reader will ask "why not just...".
 - The Quickstart is in the post and in the README. Keep it in the README and link to it.
 
+## Related sessions already in an AWS Summit catalog
+
+Checked 23 November 2026 against four session abstracts Jake found in a Summit catalog
+(exact event not confirmed - verify before citing on stage). None of these make this talk
+redundant; one of them, SEC429, is close enough that it should shape how this talk is framed.
+
+| Session | What it solves | How this project differs |
+|---|---|---|
+| **COM341**, "The AgentCore Governance Loop: Policy, Guardrails, Observability" | A fleet-wide governance loop: cataloging agents, Cedar at the gateway, Guardrails, observability | No overlap on cataloging/discovery - this project is one agent type per domain, not a fleet registry. Overlaps on Cedar (this project's C1 finding is a concrete, documented case of Cedar *not* working yet - an honest counterpoint a broad governance talk may not have room for) and on Guardrails (proven live today: a masked key, a blocked private key). Observability is this project's own weak spot (M10), not a strength to lean on against this session |
+| **TNC317**, "Building Context-Aware Agents with AgentCore Memory" (hands-on lab) | One agent remembering one customer across sessions - personalization, Semantic/Summary/User Preference strategies | Not a competitor. No second party, no isolation, no access control. Different problem: this project is about memory *between* parties, not an agent's memory of one user |
+| **SEC429 / SEC429-R1**, "Tenant-isolated agent memory: one IAM policy for AgentCore Memory" (400, run twice - popular) | **The closest session in the catalog.** Static isolation at scale: one ABAC policy plus STS session tags instead of one IAM policy per tenant, a Token Vending Machine minting per-tenant credentials, `actorId`/namespace conventions | Same underlying mechanism family (STS session tags scoping a role per request) aimed at the opposite half of the problem. SEC429: keep tenants apart, cheaply, at scale - isolate by default, full stop. This project: what happens the one time a day two already-isolated parties need a legitimate, time-boxed exception, with a human in the loop. Nothing in SEC429's abstract has a second person approving anything - that two-person approval as real MCP tools is this project's most original part (see "What is strong") and SEC429 doesn't touch it. Worth watching or reading before the talk: their `actorId`/namespace conventions likely bear on this project's own open M5/M8 findings, and "Token Vending Machine" is good AWS-native language to reuse for `VisaIssuer` |
+| **SVS336-SC2 / SC3**, "Building production AI agents on AWS: compute, security, state, and cost" (simulcast - popular) | A broad production-agent survey: compute choices, IAM/Identity/gateways/secrets, RAG + Memory for state, cost control | Mile wide, inch deep by design. No access-control narrative, no approval workflow, no claim this project needs to compete with - a different altitude entirely |
+
+**The pitch, if asked "isn't this just SEC429":** *SEC429 shows you how to keep a hundred
+tenants apart with one policy. This talk shows what you do the one time a day two of them
+legitimately need to cross - and how to make that crossing auditable, time-boxed, and
+revocable instead of ad hoc.*
+
 ## The Summit talk
 
 A 30-minute shape that uses what is already strong:
