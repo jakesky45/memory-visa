@@ -381,7 +381,7 @@
     <a href="#lifecycle">The lifecycle</a>
     <a href="#what-a-grant-unlocks">What a grant unlocks</a>
     <a href="#maya-gets-her-fact">Maya gets her fact</a>
-    <a href="#gateway-escaping">The Gateway's own bug</a>
+    <a href="#gateway-escaping">A shell trap worth knowing</a>
     <a href="#approval-ui">No bespoke UI</a>
     <a href="#identity-binding">Identity binding</a>
     <a href="#closing-the-loop">Closing the loop</a>
@@ -403,7 +403,7 @@
         <a href="#lifecycle">The lifecycle</a>
         <a href="#what-a-grant-unlocks">What a grant unlocks</a>
         <a href="#maya-gets-her-fact">Maya gets her fact</a>
-        <a href="#gateway-escaping">The Gateway's own bug</a>
+        <a href="#gateway-escaping">A shell trap worth knowing</a>
         <a href="#approval-ui">No bespoke UI</a>
         <a href="#identity-binding">Identity binding</a>
         <a href="#closing-the-loop">Closing the loop</a>
@@ -579,7 +579,7 @@
     <li>Fixing that uncovered a second issue: extraction filed records under AWS's default namespace template (<code>/strategies/{strategyId}/actors/{actorId}/</code>), while this project's <code>retrieve()</code> queries the plain namespace string directly (<code>org_robotinc_dept_legal</code>). Two paths that never intersected. Overriding the strategy's namespace to <code>{actorId}</code> fixed it without touching a line of application code.</li>
     </ol>
 
-    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, same as <code>request_access</code> through <code>whoami</code> - discovered via <code>tools/list</code>, identity from <code>IdentityInterceptor</code>'s token resolution, never an argument a caller supplies. They didn't start that way: the first version of this demo put memory access behind a plain HTTP passthrough target that trusted a <code>claims</code> dict in the request body - org, department, email, whatever the caller typed. Anyone holding a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is gone, not patched: the orchestrator behind it is now a bare <code>/ping</code> health check with no memory or grant logic left to call. With both extraction bugs fixed and memory access now a real tool, here's the scenario from the top of this post, run for real against the deployed stack. (The JSON below is reformatted for readability - see the next section for why it can't be pasted verbatim.) Liam writes the fact Maya needs:</p>
+    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, same as <code>request_access</code> through <code>whoami</code> - discovered via <code>tools/list</code>, identity from <code>IdentityInterceptor</code>'s token resolution, never an argument a caller supplies. They didn't start that way: the first version of this demo put memory access behind a plain HTTP passthrough target that trusted a <code>claims</code> dict in the request body - org, department, email, whatever the caller typed. Anyone holding a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is gone, not patched: the orchestrator behind it is now a bare <code>/ping</code> health check with no memory or grant logic left to call. With both extraction bugs fixed and memory access now a real tool, here's the scenario from the top of this post, run for real against the deployed stack. (The JSON below is reformatted for readability.) Liam writes the fact Maya needs:</p>
 
     <pre><code>{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
      "params": {"name": "AccessRequestTools___memory_write",
@@ -602,17 +602,17 @@
 
     <p>The grant itself proved out exactly as designed, end to end, against the real stack: Maya's own first search, with no grant yet, came back <code>403 "no static claim, and no active grant"</code>; once Liam approved, the same search returned the fact; a write under that same grant came back <code>403 "a grant never allows a write"</code>; and once the three-minute window closed, the same search was refused again - the grant doesn't linger past its own expiry.</p>
 
-    <h2 id="gateway-escaping">The Gateway's Own Bug</h2>
+    <h2 id="gateway-escaping">A Shell Trap Worth Knowing</h2>
 
-    <p>Every one of those JSON blocks above is reformatted. What actually comes back over the wire is not valid JSON, and that is not this project's bug to fix.</p>
+    <p>The JSON blocks above are reformatted for reading. Capturing them cost an hour, and the cause was the shell, not the Gateway.</p>
 
-    <p>AgentCore Gateway wraps a Lambda-backed tool's result into the MCP response as a string - the <code>content[0].text</code> field of a <code>tools/call</code> reply. Doing that correctly means escaping the tool result's own quotes and backslashes a second time, so the whole thing survives being embedded as a string inside a string. The Gateway escapes the backslash but not the quote that follows it, so a plain, unremarkable result like <code>{"hello": "world"}</code> comes back as:</p>
+    <p>AgentCore Gateway returns a Lambda-backed tool's result as a string - the <code>content[0].text</code> field of a <code>tools/call</code> reply. A JSON result inside a JSON string is escaped twice, so a quote inside the tool's result arrives as <code>\\\"</code>:</p>
 
-    <pre><code>"text":"{\"hello\":\"world\",\"nested\":{\"quote\":\"a \\"quoted\\" value\"}}"</code></pre>
+    <pre><code>"text":"{\"hello\":\"world\",\"nested\":{\"quote\":\"a \\\"quoted\\\" value\"}}"</code></pre>
 
-    <p>That <code>\\"</code> should be <code>\\\"</code>. Any JSON parser - not just <code>jq</code> - reads the bare <code>"</code> as the end of the <code>text</code> string and fails on whatever follows. Two things rule out our own code as the cause: calling the Lambda directly, bypassing the Gateway, returns correctly-escaped JSON every time; and swapping the Lambda's handler for one that returns a plain dict with no <code>statusCode</code>/<code>body</code> wrapper at all reproduces the exact same broken escaping. It is unconditional - any object-shaped tool result trips it, because even a result with no user text in it at all still has field names in quotes. That means this was never specific to the two new tools: it has been there since the first of the eight tools went live, through every <code>tools/call</code> this post has described as "confirmed live." Nobody had reason to feed a strict parser the raw bytes before now.</p>
+    <p>That is valid. Put the response in a shell variable and print it with zsh's <code>echo</code>, though, and it is not: zsh's <code>echo</code> reads <code>\\</code> as an escape and prints one backslash, so <code>\\\"</code> becomes <code>\\"</code> - an escaped backslash followed by a bare quote. Every JSON parser then stops at that quote. It looks exactly like a service that forgot one level of escaping, and it reproduces on any correct response with no Gateway involved.</p>
 
-    <p>There is nothing to fix in this repository. The transcripts above are the tool results after undoing the missing escape level - the data in them is real, captured from the live calls. A real MCP client still can't parse the raw response as sent. Until AWS fixes it or this project builds a tolerant client around it, that is the honest state of the thing.</p>
+    <p>The fix is to never let the shell rewrite the bytes: pipe <code>curl</code> straight into the parser, write the response to a file with <code>curl -o</code>, or print a variable with <code>printf '%s'</code>. bash's <code>echo</code> does not do this by default, which is why the same command can work on one machine and fail on another.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 

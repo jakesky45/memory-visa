@@ -47,7 +47,7 @@ Deployed in the sandbox account, `eu-west-2`:
 **Known gaps:**
 - The DynamoDB grant store is an append-only table queried by `grant_id`, not a single `audit_log` attribute like the in-memory version.
 - Reads (`memory_search`) aren't written to the audit table yet - only the request/approval/expiry lifecycle is. A read's own log line goes to stdout, with no verified-identity check on that log path.
-- **AgentCore Gateway's own `tools/call` response is not valid JSON.** It wraps a Lambda's result into `content[0].text` and under-escapes it by one level - confirmed not our bug (a direct Lambda invoke returns correctly-escaped JSON; a Lambda returning a plain dict with no wrapper breaks the same way). Affects every tool on this Gateway, not just the two added here. See `REVIEW.md`'s S12.
+- When you capture a `tools/call` response in a shell variable, print it with `printf '%s'`, not zsh's `echo`. The tool's result is JSON inside a JSON string, and zsh's `echo` removes one level of backslashes, which makes a valid response look malformed. See `REVIEW.md`'s S12.
 
 ## Quickstart
 

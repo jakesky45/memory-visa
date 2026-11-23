@@ -21,12 +21,37 @@ Four stages. Nothing in a later stage is built until the one before it is proven
 |---|---|---|---|
 | 1. Safe and true | Nothing wrong goes live, and the blog claims nothing that has not run | Claude | **Done.** See "Stage 1" below |
 | 2. Deploy and prove | The visa, proven against AWS | Claude, with Jake's AWS session | **Done.** See "Stage 2" below |
+| 2b. Finish the live checks | Three small checks stage 2 left out | Jake | To do: see "Third review" |
 | 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | To do |
 | 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
 
+### Third review: commits `0091dbf` and `4b31130`
+
+Stage 2 ran, and the result that matters is in: **AWS itself refuses a read outside the
+namespace and after the window.** The idea holds. Stage 3 can start.
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| T1 | High | **The "Gateway bug" (S12) is the shell.** A valid response printed with zsh's `echo` gives the exact broken string that was published as proof. The claim was in the blog, the README, this file and a commit message | Corrected in the blog, README and S12. Run the one-minute check in S12 to confirm |
+| T2 | Medium | **The sandbox account ID was in this public file.** `cdk/app.py` says the account ID is never in git | Removed from this file. It is still in the history of `4b31130` |
+| T3 | Medium | **The Guardrail has not seen a secret live.** The one live write was plain text. Masking and blocking are proven offline only | Check 1 below |
+| T4 | Low | **Which namespace form IAM matched is not recorded.** A8 line 1 was allowed, so one of the two forms in the policy matched. Knowing which lets the other be removed | Check 2 below |
+| T5 | Low | **S5 is closed.** The Lambda's built-in AWS SDK knows the AgentCore API: the live write and search worked | None |
+
+Three live checks to finish stage 2. Use a shell that does not rewrite the output (`curl -o`,
+or pipe straight to `jq`):
+
+1. **The Guardrail, with fake secrets.** As Liam, `memory_write` the text
+   `Deploy key AKIAABCDEFGHIJKLMNOP for the staging bucket` into Legal's namespace: expect a
+   200, and after extraction the search returns the text with the key masked. Then write
+   `-----BEGIN RSA PRIVATE KEY----- MIIEfake`: expect a 422 and nothing stored.
+2. **The namespace form.** Run the demo script with `--namespace /org_robotinc_dept_legal/`.
+   If that is allowed and the plain form is refused, or the reverse, tell me which.
+3. **S12.** The check in that section.
+
 ### Stage 2: what was done
 
-Run 23 November 2026, against the sandbox account (`<account-id>`, `eu-west-2`), using Jake's
+Run 23 November 2026, against the sandbox account (`eu-west-2`), using Jake's
 own AWS SSO session. Actions A1 to A9 all ran; A10 (send me the outputs) is this section.
 
 | Step | Result |
@@ -43,34 +68,60 @@ All nine results matched the runbook's "expected result" column exactly. The blo
 transcripts in "Maya Gets Her Fact" and the Quickstart's `tools/list` now carry this real
 output, not the placeholder from before.
 
-**One new finding, found running A6: S12.** See below.
+**One finding from running A6, S12, was first recorded as a Gateway bug. It is not one.**
+See below.
 
-### S12. The Gateway's own response is not valid JSON
+### S12. The "invalid JSON" from the Gateway is the shell, not the Gateway
 
-Found running A6 by hand: `jq` choked on the response, and so does Python's own `json.loads` -
-this is not a shell-quoting problem, the bytes on the wire are not valid JSON.
+Recorded in `4b31130` as: the Gateway under-escapes a tool result, so every `tools/call`
+response is invalid JSON, and it is AWS's bug. **Third review, same day: that conclusion is
+almost certainly wrong, and the public claim is withdrawn** (blog, README and this section
+corrected).
 
-AgentCore Gateway wraps a Lambda tool's result as a string, the `content[0].text` field of a
-`tools/call` response. That needs the result's own quotes and backslashes escaped a second
-time. The Gateway escapes the backslash but not the quote that follows it, so a result as
-plain as `{"hello": "world"}` comes back malformed. Confirmed two ways, to rule out our own
-code: invoking the Lambda directly, bypassing the Gateway, returns correctly-escaped JSON
-every time; and swapping the Lambda's handler for one that returns a plain dict with no
-`statusCode`/`body` wrapper reproduces the identical broken escaping. It is unconditional -
-any object-shaped result trips it, since even a result with no user text at all still has
-field names in quotes. `tools/list` is unaffected; nothing in that response is a nested,
-stringified tool result.
+What the evidence shows:
 
-This was not introduced by anything in `3db97ab` or `6725930`. It has been there since the
-first of the eight tools went live - every `tools/list`/`tools/call` this project has called
-"confirmed live" went through this same broken wrapping. Nobody had previously fed the raw
-bytes to a strict parser.
+- The broken string quoted as proof was
+  `"text":"{\"hello\":\"world\",\"nested\":{\"quote\":\"a \\"quoted\\" value\"}}"`.
+- I built the response a correct Gateway would send for that result, wrote it to a file, and
+  parsed it with Python's `json`: valid.
+- I put the same bytes in a shell variable and printed them with zsh's `echo`. The output is
+  the broken string above, character for character, and the parser fails at the same place.
+- With `printf '%s'`, or with bash's `echo`, the same variable parses.
 
-**Recommendation:** this is AWS's bug, not ours - open a support case, with the two
-reproductions above. Until it is fixed, a client either needs a tolerant parser (undo the
-missing escape level) or must accept that this Gateway's `tools/call` responses cannot be
-parsed as standard JSON-RPC. Say so plainly in the blog rather than show a clean transcript
-that implies the real response can be parsed as sent (now done - see "The Gateway's Own Bug").
+zsh's `echo` treats `\\` as an escape and prints one backslash. A tool result is JSON inside
+a JSON string, so its inner quotes arrive as `\\\"`; after `echo` they are `\\"`, which is
+an escaped backslash and then a bare quote. That is exactly "escapes the backslash but not
+the quote that follows it".
+
+Why the two checks in `4b31130` did not catch it:
+
+- "A direct Lambda invoke returns correct JSON": `aws lambda invoke` writes to a file, so the
+  bytes never passed through `echo`.
+- "A handler that returns a plain dict breaks the same way": the example used a value with
+  quotes inside it, which is what needs the double escape. The claim that `{"hello": "world"}`
+  alone breaks is not supported by the example shown.
+
+And one thing that should have raised doubt at the time: MCP clients parse every response
+with a strict JSON parser. If the Gateway sent invalid JSON for every `tools/call`, no client
+could have used any of these tools, and the earlier sessions in the blog would not have worked.
+
+**To confirm on the machine that saw it** (one minute, no shell in the way):
+
+```bash
+curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $LIAM" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"AccessRequestTools___whoami","arguments":{}}}' \
+  -o /tmp/resp.txt
+sed -n 's/^data: //p' /tmp/resp.txt | python3 -c 'import json,sys; d=json.load(sys.stdin); print("valid JSON"); print(json.loads(d["result"]["content"][0]["text"]))'
+```
+
+If that prints "valid JSON", close S12. If it fails with the bytes straight from `curl -o`,
+tell me, and I am wrong: restore the claim with `git revert` of this change.
+
+**Do not open an AWS support case, and do not say this on stage, until that check has run.**
+
+The lesson for the runbook: capture responses with `curl -o` or pipe `curl` straight into
+the parser. Never through `echo` in zsh.
 
 ### Runbook: stage 2 on another machine
 
