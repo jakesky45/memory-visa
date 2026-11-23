@@ -1,13 +1,21 @@
 """Lambda behind the AccessRequestTools Gateway Target - the tier-two MCP
 tools: request_access, list_pending, approve_access, deny_access,
-revoke_access, whoami.
+revoke_access, whoami, memory_search, memory_write.
 
 This is what lets an approver act through Claude/Cursor directly ("approve
 Maya's pending request") instead of a bespoke UI or a Slack app neither of
-us has admin rights to stand up. One Lambda backs all six tools; the
+us has admin rights to stand up. One Lambda backs all eight tools; the
 Gateway puts the called tool's name on `context.client_context.custom`
 under `bedrockAgentCoreToolName`, prefixed `{target}___{tool}` - the tool
 *arguments* are the Lambda `event` itself, nothing more.
+
+memory_search/memory_write replace the orchestrator's old claims-body
+`retrieve`/`put` actions (src/server.py, pre-M1): that path trusted an
+explicit `claims` dict in the request body, so any caller could assert any
+email/org/department and read or write anyone's namespace. These two tools
+use the same verified-identity rule as the other six - `_verified_email`/
+`_verified_org`/`_verified_department`, injected by IdentityInterceptor,
+never a plain argument.
 
 `whoami` is the odd one out: the other five act ON a grant; whoami reports
 a caller's own effective access right now - static Memory namespaces, any
@@ -37,6 +45,8 @@ import datetime as dt
 import json
 import os
 
+import boto3
+
 from agents.access_requests import (
     InvalidRequestError,
     NotDomainOwnerError,
@@ -47,15 +57,60 @@ from agents.access_requests import (
     revoke_request,
 )
 from agents.domain_config import allowed_tools
+from memory.agentcore_backend import AgentCoreMemoryBackend
 from memory.grants import GrantNotFoundError, InvalidTransitionError
 from memory.grants_dynamodb import DynamoGrantStore
-from memory.guarded_memory import UserClaims, requester_namespace, static_namespaces
+from memory.guarded_memory import (
+    GuardedMemory,
+    PermissionError as GuardedMemoryPermissionError,
+    UserClaims,
+    requester_namespace,
+    static_namespaces,
+)
+from memory.visa_credentials import VisaIssuer
 
 _GRANTS_TABLE = os.environ["GRANTS_TABLE_NAME"]
 _GRANTS_AUDIT_TABLE = os.environ["GRANTS_AUDIT_TABLE_NAME"]
 _REGION = os.environ.get("AWS_REGION", "eu-west-2")
+_MEMORY_ID = os.environ.get("MEMORY_ID", "")
+_MEMORY_ARN = os.environ.get("MEMORY_ARN", "")
+_VISA_ROLE_ARN = os.environ.get("VISA_ROLE_ARN", "")
+_GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "")
+_GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "DRAFT")
 
 _grants = DynamoGrantStore(_GRANTS_TABLE, _GRANTS_AUDIT_TABLE, region=_REGION)
+_bedrock_runtime = boto3.client("bedrock-runtime", region_name=_REGION) if _GUARDRAIL_ID else None
+
+
+def _apply_guardrail(text: str) -> str:
+    """Runs a memory_write through the real Bedrock Guardrail (ANONYMIZE, not
+    BLOCK - see guardrails_stack.py) before it reaches Memory. Moved here from
+    src/server.py's Tier One, which this replaces. Falls back to the raw text
+    if no guardrail is configured, rather than refusing the write outright."""
+    if _bedrock_runtime is None:
+        return text
+    response = _bedrock_runtime.apply_guardrail(
+        guardrailIdentifier=_GUARDRAIL_ID,
+        guardrailVersion=_GUARDRAIL_VERSION,
+        source="INPUT",
+        content=[{"text": {"text": text}}],
+    )
+    if response.get("action") != "GUARDRAIL_INTERVENED":
+        return text
+    redacted = "".join(output.get("text", "") for output in response.get("outputs", []))
+    return redacted or text
+
+
+# Reads go through a visa: credentials AWS limits to one namespace until the
+# grant ends (memory/visa_credentials.py). Writes use this Lambda's own role
+# (bedrock-agentcore:CreateEvent) - a grant never allows a write, so a write
+# never needs the visa's narrower, namespace-scoped credentials.
+_visa_issuer = VisaIssuer(_VISA_ROLE_ARN, _MEMORY_ARN) if _VISA_ROLE_ARN and _MEMORY_ARN else None
+_memory = (
+    GuardedMemory(AgentCoreMemoryBackend(_MEMORY_ID, _REGION, visa_issuer=_visa_issuer), _apply_guardrail, _grants)
+    if _MEMORY_ID
+    else None
+)
 
 
 class UnverifiedCallerError(Exception):
@@ -180,6 +235,51 @@ def _whoami(args: dict) -> dict:
     }
 
 
+def _claims_from(args: dict) -> UserClaims:
+    """UserClaims for memory_search/memory_write, built only from the
+    caller's verified JWT attributes - same rule as every other tool here."""
+    org = args.get("_verified_org")
+    if not org:
+        raise UnverifiedCallerError("no verified org on this call - the caller's account has no org attribute")
+    department = args.get("_verified_department")
+    return UserClaims(email=_verified_email(args), org=org, departments=(department,) if department else ())
+
+
+def _log_usage(claims: UserClaims, action: str, namespace: str, query: str | None = None) -> None:
+    # stdout only, same as src/server.py's old Tier One - still not the audit
+    # table (REVIEW.md M10: a read's audit trail can be forged, since it never
+    # leaves CloudWatch Logs under this Lambda's own, verified identity).
+    entry = {
+        "email": claims.email,
+        "org": claims.org,
+        "departments": list(claims.departments),
+        "action": action,
+        "namespace": namespace,
+        "at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    if query is not None:
+        entry["query"] = query
+    print(json.dumps(entry))
+
+
+def _memory_search(args: dict) -> dict:
+    if _memory is None:
+        raise RuntimeError("memory backend not configured - MEMORY_ID/MEMORY_ARN not set")
+    claims = _claims_from(args)
+    _log_usage(claims, "memory_search", args["namespace"], query=args["query"])
+    records = _memory.retrieve(claims, args["namespace"], args["query"], dt.datetime.now(dt.timezone.utc))
+    return {"records": records}
+
+
+def _memory_write(args: dict) -> dict:
+    if _memory is None:
+        raise RuntimeError("memory backend not configured - MEMORY_ID/MEMORY_ARN not set")
+    claims = _claims_from(args)
+    _log_usage(claims, "memory_write", args["namespace"])
+    result = _memory.put(claims, args["namespace"], args["text"], dt.datetime.now(dt.timezone.utc))
+    return {"result": result}
+
+
 _DISPATCH = {
     "request_access": _request_access,
     "list_pending": _list_pending,
@@ -187,6 +287,8 @@ _DISPATCH = {
     "deny_access": _deny_access,
     "revoke_access": _revoke_access,
     "whoami": _whoami,
+    "memory_search": _memory_search,
+    "memory_write": _memory_write,
 }
 
 
@@ -205,7 +307,7 @@ def handler(event, context):
         return {"statusCode": 400, "body": json.dumps({"error": str(exc)})}
     except InvalidTransitionError as exc:
         return {"statusCode": 409, "body": json.dumps({"error": str(exc)})}
-    except (NotDomainOwnerError, UnverifiedCallerError) as exc:
+    except (NotDomainOwnerError, UnverifiedCallerError, GuardedMemoryPermissionError) as exc:
         return {"statusCode": 403, "body": json.dumps({"error": str(exc)})}
     except GrantNotFoundError as exc:
         return {"statusCode": 404, "body": json.dumps({"error": f"no such grant: {exc}"})}

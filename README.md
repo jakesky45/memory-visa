@@ -35,14 +35,14 @@ Deployed in the sandbox account, `eu-west-2`:
 | AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` kept at `LOG_ONLY` (see below) |
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth; `IdentityInterceptor` resolves real Cognito identity before every tool call |
 | EngineeringTools target | `READY`, gate inert | `check_shipping_classification`'s department gate can't fire - Cognito access tokens carry no custom attributes, so `hasTag("department")` is never true. Left at `LOG_ONLY` rather than claim a gate that doesn't hold |
-| AccessRequestTools target | `READY` | six MCP tools (`request_access`, `approve_access`, `whoami`, etc.), one Lambda, state in DynamoDB |
+| AccessRequestTools target | `READY` | eight MCP tools (`request_access`, `approve_access`, `whoami`, `memory_search`, `memory_write`, etc.), one Lambda, state in DynamoDB |
 | GrantNotifier | `READY`, not wired up | Lambda + DynamoDB Streams trigger fire on every grant write, but `/memory-visa/slack-webhook-url` was never set - nothing is delivered yet |
 | AgentCore Memory | `ACTIVE` | pool-tenancy, one semantic strategy, 31-day record expiry |
 | AgentCore Runtime | `READY` | `network_mode="PUBLIC"` (no NAT gateway in this stack) |
 
 **Known gaps:**
-- The orchestrator's own Gateway target reads identity from claims in the request body, not the verified JWT - the six MCP tools don't have this gap, since `IdentityInterceptor` resolves real identity for those.
 - The DynamoDB grant store is an append-only table queried by `grant_id`, not a single `audit_log` attribute like the in-memory version.
+- Reads (`memory_search`) aren't written to the audit table yet - only the request/approval/expiry lifecycle is. A read's own log line goes to stdout, with no verified-identity check on that log path.
 
 ## Quickstart
 
@@ -116,12 +116,12 @@ cdk destroy --all
 | `src/memory/agentcore_backend.py` | the real AgentCore Memory client |
 | `src/agents/domain_config.py` | per-role toolset, grant-aware |
 | `src/agents/domain_owners.py` | per-org approval authority |
-| `src/agents/access_requests.py` | request/approve/deny logic, shared by the orchestrator and the MCP tools |
+| `src/agents/access_requests.py` | request/approve/deny logic |
 | `src/tools/identity_interceptor.py` | resolves a caller's real Cognito identity before any tool runs |
-| `src/tools/access_request_tools.py` | `request_access`/`list_pending`/`approve_access`/`deny_access`/`revoke_access`/`whoami` as six MCP tools |
+| `src/tools/access_request_tools.py` | the grant workflow plus `memory_search`/`memory_write` - eight MCP tools, one Lambda |
 | `src/tools/grant_notifier.py` | DynamoDB Streams → Slack, both directions |
 | `src/tools/check_shipping_classification_tool.py` | the one real Engineering Gateway tool, a stub |
-| `src/server.py` | the orchestrator: `/ping`, `/invocations`, routes through the modules above |
+| `src/server.py` | the orchestrator - reduced to a `/ping` health check; memory and grant access moved to MCP tools above |
 | `tests/` | the eval suite - runs the six properties offline, no AWS account needed |
 | `cdk/` | network, guardrails, and agentcore CDK stacks |
 | `Dockerfile` | the orchestrator's container image (arm64, `PYTHONUNBUFFERED=1`) |

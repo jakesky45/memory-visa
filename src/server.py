@@ -1,152 +1,30 @@
-"""The real orchestrator, replacing the /ping+/invocations stub.
+"""The orchestrator, reduced to a health check.
 
-Identity note: the request body carries `claims` explicitly for now, not a
-verified JWT - real JWT verification belongs at the Gateway (CUSTOM_JWT,
-already configured) or an MCP-layer step, not reinvented here. This is the
-orchestrator proving out GuardedMemory/access_requests end to end against
-the real AgentCore Memory backend; wiring real verified identity through is
-the MCP step that follows.
+M1 (see REVIEW.md): this used to carry put/retrieve/request_access/
+list_pending/approve_access/deny_access, all trusting an explicit `claims`
+dict in the request body instead of a verified JWT - any caller could assert
+any email/org/department and read, write, or approve as anyone. That path
+has been deleted. Memory access is now `memory_search`/`memory_write` and
+the grant workflow is `request_access`/`list_pending`/`approve_access`/
+`deny_access`/`revoke_access`/`whoami` - all eight real MCP tools on the
+AccessRequestTools Gateway Target (src/tools/access_request_tools.py), using
+`_verified_email`/`_verified_org`/`_verified_department` from
+IdentityInterceptor, the same verified-identity rule the grant tools always
+used. Tier One's only remaining job is proving the Runtime container is
+alive; there's no privileged action left to reach by calling it.
 
-Cost attribution: a structured JSON log line per memory operation (org,
-department, action, namespace) - the healthcare sample's documented pattern,
-achieved here with zero extra AWS resources (CloudWatch Logs Insights can
-already query it), rather than standing up Bedrock Projects for a demo.
+This also means the Orchestrator Gateway Target's POST:/invocations is no
+longer a path worth guarding with anything beyond /ping - it has nothing to
+hand out. Kept as a bare HTTP server rather than removed outright, as a stub
+for N6 (REVIEW.md: "an agent that actually calls a model and uses memory in
+conversation") - that work needs a long-running container to put a real
+agent loop in, and this is already wired into the Runtime/Gateway/ECR
+pipeline.
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
-import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
-import boto3
-
-from agents.access_requests import (
-    InvalidRequestError,
-    NotDomainOwnerError,
-    approve_request,
-    deny_request,
-    pending_requests_for_owner,
-    request_cross_domain_access,
-)
-from memory.agentcore_backend import AgentCoreMemoryBackend
-from memory.grants import InvalidTransitionError
-from memory.grants_dynamodb import DynamoGrantStore
-from memory.guarded_memory import GuardedMemory, PermissionError as GuardedMemoryPermissionError, UserClaims
-from memory.visa_credentials import VisaIssuer
-
-MEMORY_ID = os.environ.get("MEMORY_ID", "")
-REGION = os.environ.get("AWS_REGION", "eu-west-2")
-GRANTS_TABLE = os.environ.get("GRANTS_TABLE_NAME", "")
-GRANTS_AUDIT_TABLE = os.environ.get("GRANTS_AUDIT_TABLE_NAME", "")
-VISA_ROLE_ARN = os.environ.get("VISA_ROLE_ARN", "")
-MEMORY_ARN = os.environ.get("MEMORY_ARN", "")
-GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "")
-GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "DRAFT")
-
-# Same DynamoDB-backed store the tier-two MCP tools (AccessRequestTools) read
-# and write - not a second, disconnected in-process one. A grant Liam
-# approves through his own Claude session is the same grant this orchestrator
-# checks before letting Maya's retrieve through.
-_grants = DynamoGrantStore(GRANTS_TABLE, GRANTS_AUDIT_TABLE, region=REGION) if GRANTS_TABLE else None
-_bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION) if GUARDRAIL_ID else None
-
-
-def _apply_guardrail(text: str) -> str:
-    """Runs a write through the real Bedrock Guardrail (ANONYMIZE, not BLOCK -
-    see guardrails_stack.py) before it reaches Memory. Previously a no-op:
-    nothing called this, so a pasted secret was stored as written despite the
-    Guardrail existing in the stack. Falls back to the raw text if no
-    guardrail is configured, rather than refusing the write outright."""
-    if _bedrock_runtime is None:
-        return text
-    response = _bedrock_runtime.apply_guardrail(
-        guardrailIdentifier=GUARDRAIL_ID,
-        guardrailVersion=GUARDRAIL_VERSION,
-        source="INPUT",
-        content=[{"text": {"text": text}}],
-    )
-    if response.get("action") != "GUARDRAIL_INTERVENED":
-        return text
-    redacted = "".join(output.get("text", "") for output in response.get("outputs", []))
-    return redacted or text
-# Reads of long-term memory go through a visa: credentials AWS limits to one namespace
-# until the grant ends (memory/visa_credentials.py). Without the role, reads use this
-# process's own role, as before.
-_visa_issuer = VisaIssuer(VISA_ROLE_ARN, MEMORY_ARN) if VISA_ROLE_ARN and MEMORY_ARN else None
-_memory = (
-    GuardedMemory(AgentCoreMemoryBackend(MEMORY_ID, REGION, visa_issuer=_visa_issuer), _apply_guardrail, _grants)
-    if MEMORY_ID and _grants
-    else None
-)
-
-
-def _log_usage(claims: UserClaims, action: str, namespace: str, query: str | None = None) -> None:
-    entry = {
-        "email": claims.email,
-        "org": claims.org,
-        "departments": list(claims.departments),
-        "action": action,
-        "namespace": namespace,
-        "at": dt.datetime.now(dt.timezone.utc).isoformat(),
-    }
-    if query is not None:
-        entry["query"] = query
-    print(json.dumps(entry))
-
-
-def _claims_from(payload: dict) -> UserClaims:
-    c = payload["claims"]
-    return UserClaims(
-        email=c["email"],
-        org=c["org"],
-        departments=tuple(c.get("departments", [])),
-        projects=tuple(c.get("projects", [])),
-    )
-
-
-def _handle_invocation(payload: dict) -> dict:
-    action = payload.get("action")
-    now = dt.datetime.now(dt.timezone.utc)
-
-    if action == "put":
-        claims = _claims_from(payload)
-        _log_usage(claims, action, payload["namespace"])
-        result = _memory.put(claims, payload["namespace"], payload["text"], now)
-        return {"ok": True, "result": result}
-
-    if action == "retrieve":
-        claims = _claims_from(payload)
-        _log_usage(claims, action, payload["namespace"], query=payload["query"])
-        result = _memory.retrieve(claims, payload["namespace"], payload["query"], now)
-        return {"ok": True, "result": result}
-
-    if action == "request_access":
-        claims = _claims_from(payload)
-        grant = request_cross_domain_access(
-            _grants,
-            claims,
-            target_org=payload["target_org"],
-            target_department=payload["target_department"],
-            reason=payload["reason"],
-            duration=dt.timedelta(hours=payload.get("duration_hours", 2)),
-            now=now,
-        )
-        return {"ok": True, "grant_id": grant.grant_id, "status": grant.status.value}
-
-    if action == "list_pending":
-        pending = pending_requests_for_owner(_grants, payload["owner_email"])
-        return {"ok": True, "pending": [{"grant_id": g.grant_id, "reason": g.reason} for g in pending]}
-
-    if action == "approve_access":
-        grant = approve_request(_grants, payload["grant_id"], payload["approver_email"], now)
-        return {"ok": True, "status": grant.status.value}
-
-    if action == "deny_access":
-        grant = deny_request(_grants, payload["grant_id"], payload["approver_email"], now)
-        return {"ok": True, "status": grant.status.value}
-
-    return {"ok": False, "error": f"unknown action '{action}'"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -161,31 +39,14 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(404, {"error": "not found"})
             return
 
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length else b"{}"
-        try:
-            payload = json.loads(body or b"{}")
-            result = _handle_invocation(payload)
-            self._respond(200, result)
-        except (GuardedMemoryPermissionError, NotDomainOwnerError) as exc:
-            self._respond(403, {"ok": False, "error": str(exc)})
-        except KeyError as exc:
-            self._respond(400, {"ok": False, "error": f"missing required field: {exc}"})
-        except InvalidRequestError as exc:
-            self._respond(400, {"ok": False, "error": str(exc)})
-        except InvalidTransitionError as exc:
-            self._respond(409, {"ok": False, "error": str(exc)})
-        except Exception as exc:  # noqa: BLE001 - deliberately broad: an
-            # unhandled exception here must still produce an HTTP response.
-            # Letting it propagate out of do_POST crashes the single-threaded
-            # handler with no response sent at all, which the AgentCore
-            # proxy reports as a flat 502 - confirmed by hitting exactly that
-            # on the first real invocation, with nothing useful in the logs
-            # to explain it. A 500 with the real error is strictly better.
-            import traceback
-
-            traceback.print_exc()
-            self._respond(500, {"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+        self._respond(410, {
+            "ok": False,
+            "error": (
+                "this orchestrator no longer handles memory or grant actions - use the "
+                "memory_search/memory_write/request_access/list_pending/approve_access/"
+                "deny_access/revoke_access/whoami MCP tools on the Gateway instead"
+            ),
+        })
 
     def _respond(self, status: int, payload: dict) -> None:
         body = json.dumps(payload).encode()

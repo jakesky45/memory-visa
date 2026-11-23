@@ -101,7 +101,9 @@ permit (
         AgentCore::Action::"AccessRequestTools___approve_access",
         AgentCore::Action::"AccessRequestTools___deny_access",
         AgentCore::Action::"AccessRequestTools___revoke_access",
-        AgentCore::Action::"AccessRequestTools___whoami"
+        AgentCore::Action::"AccessRequestTools___whoami",
+        AgentCore::Action::"AccessRequestTools___memory_search",
+        AgentCore::Action::"AccessRequestTools___memory_write"
     ],
     resource == AgentCore::Gateway::"__GATEWAY_ARN__"
 );
@@ -568,6 +570,32 @@ class AgentCoreStack(Stack):
                 ),
                 input_schema={"type": "object", "properties": {}, "required": []},
             ),
+            agentcore.CfnGatewayTarget.ToolDefinitionProperty(
+                name="memory_search",
+                description=(
+                    "Search a Memory namespace. The caller's own namespace, or another org/department's "
+                    "only while an active grant covers it - reads outside a grant use credentials IAM "
+                    "scopes to that one namespace until the grant ends."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"namespace": {"type": "string"}, "query": {"type": "string"}},
+                    "required": ["namespace", "query"],
+                },
+            ),
+            agentcore.CfnGatewayTarget.ToolDefinitionProperty(
+                name="memory_write",
+                description=(
+                    "Write a fact into the caller's own Memory namespace, through the Guardrail first. "
+                    "A grant never allows a write, only a read - this always writes to the caller's own "
+                    "namespace, regardless of any grant they hold into someone else's."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"namespace": {"type": "string"}, "text": {"type": "string"}},
+                    "required": ["namespace", "text"],
+                },
+            ),
         ]
         self.access_request_tools_target = agentcore.CfnGatewayTarget(
             self,
@@ -722,35 +750,29 @@ class AgentCoreStack(Stack):
                 resources=[f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*"],
             )
         )
-        self.runtime_role.add_to_policy(
-            iam.PolicyStatement(
-                # Writes only. The orchestrator's own role can no longer READ memory:
-                # every read goes through the visa role below, with credentials AWS
-                # limits to one namespace until the grant ends.
-                actions=["bedrock-agentcore:CreateEvent"],
-                resources=[self.memory.attr_memory_arn],
-            )
-        )
-
         # The visa role (src/memory/visa_credentials.py). It may read any namespace,
-        # but nobody uses it as it is: the orchestrator assumes it once per read with
-        # a session policy that narrows it to one namespace and one end time. A
+        # but nobody uses it as it is: a caller assumes it once per read with a
+        # session policy that narrows it to one namespace and one end time. A
         # session policy can only narrow a role, so this policy is the ceiling.
         #
         # sts:TagSession, so the session carries the grant ID and the requester and
         # CloudTrail shows which grant a read was made under.
+        #
+        # M1: reads moved from the orchestrator (Tier One, trusting a `claims` body)
+        # to the memory_search MCP tool on AccessRequestTools, so that Lambda's role -
+        # not the orchestrator's runtime_role - is what's trusted to assume this.
         self.visa_role = iam.Role(
             self,
             "VisaReaderRole",
             role_name="memory-visa-reader",
             description="Read AgentCore Memory. Always assumed with a session policy for one namespace and one end time.",
-            assumed_by=iam.ArnPrincipal(self.runtime_role.role_arn),
+            assumed_by=iam.ArnPrincipal(self.access_request_tools_fn.role.role_arn),
             max_session_duration=Duration.hours(1),
         )
         self.visa_role.assume_role_policy.add_statements(
             iam.PolicyStatement(
                 actions=["sts:TagSession"],
-                principals=[iam.ArnPrincipal(self.runtime_role.role_arn)],
+                principals=[iam.ArnPrincipal(self.access_request_tools_fn.role.role_arn)],
             )
         )
         # For demo/visa_credentials_demo.py only: one more principal that may assume the
@@ -774,23 +796,36 @@ class AgentCoreStack(Stack):
                 resources=[self.memory.attr_memory_arn],
             )
         )
-        self.runtime_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["sts:AssumeRole", "sts:TagSession"],
-                resources=[self.visa_role.role_arn],
-            )
-        )
-        self.grants_table.grant_read_write_data(self.runtime_role)
-        self.grants_audit_table.grant_read_write_data(self.runtime_role)
 
         # The Guardrail the stack docstring already promised but never actually
-        # wired up - server.py's _apply_guardrail was a no-op lambda with
+        # wired up - server.py's old _apply_guardrail was a no-op lambda with
         # nothing behind it. DRAFT is the only version that exists: the
         # GuardrailsStack creates the CfnGuardrail resource but no
         # CfnGuardrailVersion, so there's nothing to publish a numbered
         # version from yet.
         guardrail_arn = f"arn:aws:bedrock:{self.region}:{self.account}:guardrail/{guardrail_id}"
-        self.runtime_role.add_to_policy(
+
+        # M1: memory_search/memory_write live on AccessRequestTools now, not the
+        # orchestrator - so this Lambda, not runtime_role, needs the memory write
+        # permission, the visa assume-role, and the guardrail call.
+        self.access_request_tools_fn.add_environment("MEMORY_ID", self.memory.attr_memory_id)
+        self.access_request_tools_fn.add_environment("MEMORY_ARN", self.memory.attr_memory_arn)
+        self.access_request_tools_fn.add_environment("VISA_ROLE_ARN", self.visa_role.role_arn)
+        self.access_request_tools_fn.add_environment("GUARDRAIL_ID", guardrail_id)
+        self.access_request_tools_fn.add_environment("GUARDRAIL_VERSION", "DRAFT")
+        self.access_request_tools_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock-agentcore:CreateEvent"],
+                resources=[self.memory.attr_memory_arn],
+            )
+        )
+        self.access_request_tools_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["sts:AssumeRole", "sts:TagSession"],
+                resources=[self.visa_role.role_arn],
+            )
+        )
+        self.access_request_tools_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["bedrock:ApplyGuardrail"],
                 resources=[guardrail_arn],
@@ -808,15 +843,10 @@ class AgentCoreStack(Stack):
             "OrchestratorRuntime",
             agent_runtime_name="memory_visa_orchestrator",
             role_arn=self.runtime_role.role_arn,
-            environment_variables={
-                "MEMORY_ID": self.memory.attr_memory_id,
-                "MEMORY_ARN": self.memory.attr_memory_arn,
-                "VISA_ROLE_ARN": self.visa_role.role_arn,
-                "GRANTS_TABLE_NAME": self.grants_table.table_name,
-                "GRANTS_AUDIT_TABLE_NAME": self.grants_audit_table.table_name,
-                "GUARDRAIL_ID": guardrail_id,
-                "GUARDRAIL_VERSION": "DRAFT",
-            },
+            # M1: no memory/grants/guardrail env vars - server.py is a bare
+            # health check now, nothing here reads them. They live on
+            # access_request_tools_fn, which does the real work.
+            environment_variables={},
             agent_runtime_artifact=agentcore.CfnRuntime.AgentRuntimeArtifactProperty(
                 container_configuration=agentcore.CfnRuntime.ContainerConfigurationProperty(
                     # Referenced by digest, not the mutable :latest tag -

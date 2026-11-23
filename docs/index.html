@@ -577,28 +577,30 @@
     <li>Fixing that uncovered a second issue: extraction filed records under AWS's default namespace template (<code>/strategies/{strategyId}/actors/{actorId}/</code>), while this project's <code>retrieve()</code> queries the plain namespace string directly (<code>org_robotinc_dept_legal</code>). Two paths that never intersected. Overriding the strategy's namespace to <code>{actorId}</code> fixed it without touching a line of application code.</li>
     </ol>
 
-    <p>Put and retrieve aren't MCP tools - that's Tier One, the HTTP passthrough target from earlier, invoked directly rather than discovered via <code>tools/list</code>. With both bugs fixed, here's the actual scenario from the top of this post, run for real. Liam writes the fact Maya needs:</p>
+    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, same as <code>request_access</code> through <code>whoami</code> - discovered via <code>tools/list</code>, identity from <code>IdentityInterceptor</code>'s token resolution, never an argument a caller supplies. They didn't start that way: the first version of this demo put memory access behind a plain HTTP passthrough target that trusted a <code>claims</code> dict in the request body - org, department, email, whatever the caller typed. Anyone holding a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is gone, not patched: the orchestrator behind it is now a bare <code>/ping</code> health check with no memory or grant logic left to call. With both extraction bugs fixed and memory access now a real tool, here's the actual scenario from the top of this post, run for real. Liam writes the fact Maya needs:</p>
 
-    <pre><code>{"action": "put", "namespace": "org_robotinc_dept_legal",
-     "text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}</code></pre>
-    <pre><code>{"ok": true, "result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795364012656#508fa195"}}</code></pre>
+    <pre><code>{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+     "params": {"name": "AccessRequestTools___memory_write",
+                "arguments": {"namespace": "org_robotinc_dept_legal",
+                              "text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}}}</code></pre>
+    <pre><code>{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795364012656#508fa195"}}</code></pre>
 
-    <p>A minute or so later - real background extraction, not an instant write - Maya, holding the grant from earlier in this post, retrieves:</p>
+    <p>A minute or so later - real background extraction, not an instant write - Maya, holding the grant from earlier in this post, searches:</p>
 
-    <pre><code>{"action": "retrieve", "namespace": "org_robotinc_dept_legal",
-     "query": "X-7 battery pack export control classification"}</code></pre>
-    <pre><code>{"ok": true, "result": [
+    <pre><code>{"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+     "params": {"name": "AccessRequestTools___memory_search",
+                "arguments": {"namespace": "org_robotinc_dept_legal",
+                              "query": "X-7 battery pack export control classification"}}}</code></pre>
+    <pre><code>{"records": [
       {"text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."},
       {"text": "Supplier X is banned under export control classification 7A994 effective immediately (as of 2026-11-22)."}
     ]}</code></pre>
 
-    <p>That first result is the fact from paragraph one. Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships - and the audit log backing it now records who asked, which namespace, and what they searched for, not just that some request happened:</p>
+    <p>That first result is the fact from paragraph one. Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships - and a log line records who asked, which namespace, and what they searched for, not just that some request happened:</p>
 
-    <pre><code>{"email": "maya@robotinc.example", "org": "robotinc", "departments": ["engineering"], "action": "retrieve", "namespace": "org_robotinc_dept_legal", "at": "2026-11-22T16:17:46Z", "query": "X-7 battery pack export control classification"}</code></pre>
+    <pre><code>{"email": "maya@robotinc.example", "org": "robotinc", "departments": ["engineering"], "action": "memory_search", "namespace": "org_robotinc_dept_legal", "at": "2026-11-22T16:17:46Z", "query": "X-7 battery pack export control classification"}</code></pre>
 
-    <p>That <code>email</code> and <code>query</code> field didn't exist until this round trip forced the question - the log line used to carry neither, and its own <code>print()</code> calls were sitting in an unflushed stdout buffer regardless, a standard gotcha for a long-running, non-interactive Python process, fixed with <code>PYTHONUNBUFFERED=1</code>.</p>
-
-    <p>One honest caveat on how this demo is invoked, not papered over: Tier One takes <code>claims</code> directly in its request body - org, department, email - not a verified JWT. That's a narrower guarantee than everywhere else in this post. Cognito authenticates the <em>call</em> to the Gateway, but the orchestrator doesn't yet read department or org back out of that verified token itself - the same gap the code's own docstring names. The grant-and-tool layer (<code>request_access</code> through <code>whoami</code>) never has this problem; identity there comes from <code>IdentityInterceptor</code>'s token resolution, never the caller. Memory access through Tier One is the one place in this post where that's not yet true.</p>
+    <p>Named rather than buried: that line goes to CloudWatch Logs via stdout, under this Lambda's own, verified identity - not yet to the DynamoDB audit table the grant lifecycle writes to. The request/approval/expiry trail can't be forged; a read's trail, today, is a log line someone would have to go looking for.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 
@@ -606,12 +608,7 @@
 
     <p>The approver already has an AI client open - Claude, Cursor, Kiro, whatever they already reach for. MCP doesn't care which. Bring-your-own-client is the whole point of the protocol, built into the standard rather than bolted on for this project. If <code>approve_access</code> is a real tool that client can see and call, the approval step costs nothing extra to operate - no new surface, no new login, no admin request to file.</p>
 
-    <p>That's two different levels of "real," though, and only one of them is good enough:</p>
-
-    <ul>
-    <li><strong>Tier One (HTTP Passthrough)</strong> - the orchestrator fronted by the Gateway as an <code>http.agentcoreRuntime</code> passthrough target. Confirmed working end-to-end with a real OAuth token: client credentials, Cognito, bearer token, Gateway, Cedar, a real <code>InvokeAgentRuntime</code>, and a real Memory write. But it's passthrough. A real MCP client doing <code>tools/list</code> sees one HTTP-shaped target, not <code>request_access</code> and <code>approve_access</code> as discrete tools it can reason about and call on its own.</li>
-    <li><strong>Tier Two (Discrete MCP Tools + DynamoDB)</strong> - five separate tools, each with its own schema, registered on a Lambda-backed Gateway Target. Grant state moved out of the orchestrator's in-process <code>GrantStore</code> into DynamoDB, because a <code>tools/call</code> can land on a different, stateless Lambda invocation than the one before it - there's no shared Python process for in-memory state to survive in.</li>
-    </ul>
+    <p>That's two different levels of "real," though, and only one of them was good enough. The first version of this demo had both: an HTTP passthrough target fronting the orchestrator directly - confirmed working end-to-end with a real OAuth token, client credentials, Cognito, bearer token, Gateway, Cedar, a real <code>InvokeAgentRuntime</code> - alongside a Lambda-backed Gateway Target with five separate, individually-discoverable tools. The passthrough target took a request and did the thing, but a real MCP client doing <code>tools/list</code> saw one HTTP-shaped target on it, not <code>request_access</code> and <code>approve_access</code> as tools it could reason about and call on its own - and it trusted whatever identity the caller put in the request body, which is how <a href="#maya-gets-her-fact">memory access</a> ended up with the same gap, until it didn't. The orchestrator's privileged logic is gone now, not patched - the Gateway Target in front of it still exists, stripped to a <code>/ping</code> health check, a stub kept for whatever actually calls a model in a later post. The discrete-tools path was always the only one worth keeping as the real answer. Grant state lives in DynamoDB, not an orchestrator's in-process <code>GrantStore</code>, because a <code>tools/call</code> can land on a different, stateless Lambda invocation than the one before it - there's no shared Python process for in-memory state to survive in.</p>
 
     <p>Confirmed live, the same day this was built - a real <code>tools/list</code> against the deployed Gateway:</p>
 
@@ -841,7 +838,7 @@
       --auth-parameters USERNAME=maya,PASSWORD='&lt;temporary-password&gt;' \
       --query AuthenticationResult.AccessToken --output text)</code></pre>
 
-    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly is the proof, not the claim - all six tools, now scoped to Maya specifically instead of the shared service credential:</p>
+    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly is the proof, not the claim - all eight tools, now scoped to Maya specifically instead of the shared service credential:</p>
 
     <pre><code>curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
@@ -853,7 +850,9 @@
     AccessRequestTools___approve_access
     AccessRequestTools___deny_access
     AccessRequestTools___revoke_access
-    AccessRequestTools___whoami</code></pre>
+    AccessRequestTools___whoami
+    AccessRequestTools___memory_search
+    AccessRequestTools___memory_write</code></pre>
 
     <p>A static token, deliberately. Cognito fully supports the cleaner OAuth <code>authorization_code</code> flow here, but Claude Code has a <a href="https://github.com/anthropics/claude-code/issues/90190">confirmed, open bug</a> where it omits the <code>scope</code> parameter when a protected resource's metadata advertises no scopes (AgentCore Gateway always advertises none), which Cognito rejects with <code>invalid_grant</code> on every token exchange. Not ours to fix - the static token sidesteps it entirely.</p>
 
