@@ -86,8 +86,8 @@ catalog checked so far has.
   beats 3 and 4 already prove live - it doesn't oversell beats 1 and 2.
 - **The five patterns**: the session tags on the visa are for the audit trail only; the
   scoping is the session policy. Published facts and brokered answers are not built. The
-  abstract calls the five a framework for that reason. Building published facts (N8)
-  would let the talk show a fourth live.
+  abstract calls the five a framework for that reason. Published facts (N8) is written
+  and tested offline; once it is proven live, the talk can show four of the five.
 - **D6**: three facts named in the talk outline (the name "Dogwood", an AWS security blog's
   publish date, the AgentCore/Bedrock Agents GA dates) still need a last check against
   live AWS documentation immediately before the talk, not just at review time.

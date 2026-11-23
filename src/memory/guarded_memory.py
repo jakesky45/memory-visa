@@ -50,6 +50,12 @@ def static_namespaces(claims: UserClaims) -> set[str]:
     return namespaces
 
 
+def published_namespace(org: str) -> str:
+    """Where an org's published facts live. Every member of the org may read it, with
+    no grant. Nobody writes to it with memory_write: a domain owner publishes to it."""
+    return f"org_{org}_published"
+
+
 class MemoryBackend(Protocol):
     """What a real AgentCore Memory client (or a test fake) needs to expose."""
 
@@ -123,12 +129,36 @@ class GuardedMemory:
         self._audit(claims, namespace, "write", now, record_ids=(event_id,) if event_id else ())
         return result
 
+    def publish(self, claims: UserClaims, department: str, text: str, now: dt.datetime) -> dict:
+        """Publish one fact from a department to everyone in the org (N8). The fact is
+        stored as written, with who published it and for which department, so a reader
+        can see its source. The caller must be in the department; whether the caller
+        may speak for it (the domain owner) is checked by agents.access_requests."""
+        namespace = published_namespace(claims.org)
+        if department not in claims.departments:
+            self._audit(claims, namespace, "publish_refused", now, detail=f"not a member of '{department}'")
+            raise PermissionError(f"{claims.email} is not in department '{department}' and cannot publish for it")
+        put_record = getattr(self._memory, "put_record", None)
+        if put_record is None:
+            raise PermissionError("this memory backend cannot store a published fact")
+        try:
+            sanitized = self._apply_guardrail(text)
+        except Exception as error:
+            self._audit(claims, namespace, "publish_refused", now, detail=f"guardrail: {type(error).__name__}")
+            raise
+        metadata = {"published_by": claims.email, "department": department, "published_at": now.isoformat()}
+        result = put_record(namespace, sanitized, metadata)
+        record_id = result.get("recordId")
+        self._audit(claims, namespace, "publish", now, record_ids=(record_id,) if record_id else (), detail=f"for {department}")
+        return {**result, **metadata}
+
     def retrieve(self, claims: UserClaims, namespace: str, query: str, now: dt.datetime) -> list[dict]:
         """Search one namespace. Each result says where it came from and why the
         caller may see it. The read is in the audit trail before the caller has the
         results: if the trail cannot be written, nothing is returned."""
+        published = namespace == published_namespace(claims.org)
         try:
-            grant = self._authorising_grant(claims, namespace, now)
+            grant = None if published else self._authorising_grant(claims, namespace, now)
         except PermissionError as error:
             self._audit(claims, namespace, "read_refused", now, query=query, detail=str(error))
             raise
@@ -150,6 +180,8 @@ class GuardedMemory:
                 "approved_by": grant.approved_by,
                 "expires_at": (grant.approved_at + grant.duration).isoformat(),
             }
+        elif published:
+            access = {"via": "published"}
         else:
             access = {"via": "membership"}
         results = [{**record, "namespace": namespace, "access": access} for record in records]

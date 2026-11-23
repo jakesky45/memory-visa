@@ -104,7 +104,8 @@ permit (
         AgentCore::Action::"AccessRequestTools___whoami",
         AgentCore::Action::"AccessRequestTools___memory_search",
         AgentCore::Action::"AccessRequestTools___memory_write",
-        AgentCore::Action::"AccessRequestTools___grant_activity"
+        AgentCore::Action::"AccessRequestTools___grant_activity",
+        AgentCore::Action::"AccessRequestTools___publish_fact"
     ],
     resource == AgentCore::Gateway::"__GATEWAY_ARN__"
 );
@@ -566,6 +567,20 @@ class AgentCoreStack(Stack):
                 },
             ),
             agentcore.CfnGatewayTarget.ToolDefinitionProperty(
+                name="publish_fact",
+                description=(
+                    "Publish one fact from a department to everyone in the org. Only the department's "
+                    "owner may. The fact is stored as written, with who published it and for which "
+                    "department, and every member of the org can read it with no grant by searching "
+                    "the org's published namespace (see whoami)."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"department": {"type": "string"}, "text": {"type": "string"}},
+                    "required": ["department", "text"],
+                },
+            ),
+            agentcore.CfnGatewayTarget.ToolDefinitionProperty(
                 name="grant_activity",
                 description=(
                     "What happened to one grant and under it: the request, the decision, and each "
@@ -858,6 +873,23 @@ class AgentCoreStack(Stack):
                 resources=[self.memory.attr_memory_arn],
             )
         )
+        # N8: publish_fact writes one long-term record directly, and only into a
+        # published namespace. IAM holds that line, not only the Python: the condition
+        # lists both forms of the namespace, because both matched in the visa check (T4).
+        self.access_request_tools_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock-agentcore:BatchCreateMemoryRecords"],
+                resources=[self.memory.attr_memory_arn],
+                conditions={
+                    "StringLike": {"bedrock-agentcore:namespace": ["org_*_published", "/org_*_published/"]},
+                },
+            )
+        )
+        # Optional: the strategy a published record is grouped under. Set it only if
+        # search does not return published facts without it (REVIEW.md, N8 check).
+        strategy_id = self.node.try_get_context("publishedStrategyId")
+        if strategy_id:
+            self.access_request_tools_fn.add_environment("MEMORY_STRATEGY_ID", strategy_id)
         self.access_request_tools_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["sts:AssumeRole", "sts:TagSession"],

@@ -1,10 +1,11 @@
 """Lambda behind the AccessRequestTools Gateway Target - the tier-two MCP
 tools: request_access, list_pending, approve_access, deny_access,
-revoke_access, whoami, memory_search, memory_write, grant_activity.
+revoke_access, whoami, memory_search, memory_write, grant_activity,
+publish_fact.
 
 This is what lets an approver act through Claude/Cursor directly ("approve
 Maya's pending request") instead of a bespoke UI or a Slack app neither of
-us has admin rights to stand up. One Lambda backs all nine tools; the
+us has admin rights to stand up. One Lambda backs all ten tools; the
 Gateway puts the called tool's name on `context.client_context.custom`
 under `bedrockAgentCoreToolName`, prefixed `{target}___{tool}` - the tool
 *arguments* are the Lambda `event` itself, nothing more.
@@ -55,6 +56,7 @@ from agents.access_requests import (
     deny_request,
     grant_activity,
     pending_requests_for_owner,
+    publish_fact,
     request_cross_domain_access,
     revoke_request,
 )
@@ -67,6 +69,7 @@ from memory.guarded_memory import (
     GuardedMemory,
     PermissionError as GuardedMemoryPermissionError,
     UserClaims,
+    published_namespace,
     requester_namespace,
     static_namespaces,
 )
@@ -80,6 +83,7 @@ _MEMORY_ARN = os.environ.get("MEMORY_ARN", "")
 _VISA_ROLE_ARN = os.environ.get("VISA_ROLE_ARN", "")
 _GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "")
 _GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "DRAFT")
+_MEMORY_STRATEGY_ID = os.environ.get("MEMORY_STRATEGY_ID") or None
 
 _grants = DynamoGrantStore(_GRANTS_TABLE, _GRANTS_AUDIT_TABLE, region=_REGION)
 _bedrock_runtime = boto3.client("bedrock-runtime", region_name=_REGION) if _GUARDRAIL_ID else None
@@ -98,7 +102,11 @@ def _apply_guardrail(text: str) -> str:
 # never needs the visa's narrower, namespace-scoped credentials.
 _visa_issuer = VisaIssuer(_VISA_ROLE_ARN, _MEMORY_ARN) if _VISA_ROLE_ARN and _MEMORY_ARN else None
 _memory = (
-    GuardedMemory(AgentCoreMemoryBackend(_MEMORY_ID, _REGION, visa_issuer=_visa_issuer), _apply_guardrail, _grants)
+    GuardedMemory(
+        AgentCoreMemoryBackend(_MEMORY_ID, _REGION, visa_issuer=_visa_issuer, strategy_id=_MEMORY_STRATEGY_ID),
+        _apply_guardrail,
+        _grants,
+    )
     if _MEMORY_ID
     else None
 )
@@ -218,6 +226,8 @@ def _whoami(args: dict) -> dict:
         "department": department,
         "memory": {
             "static_namespaces": sorted(static_namespaces(claims)),
+            # Read-only for every member of the org, no grant: facts a domain owner published.
+            "published_namespace": published_namespace(claims.org),
             "granted_namespaces": [
                 {"namespace": g.target_namespace, "expires_at": (g.approved_at + g.duration).isoformat()}
                 for g in granted
@@ -284,6 +294,14 @@ def _plain(value):
     return value
 
 
+def _publish_fact(args: dict) -> dict:
+    if _memory is None:
+        raise RuntimeError("memory backend not configured - MEMORY_ID/MEMORY_ARN not set")
+    claims = _claims_from(args)
+    _log_usage(claims, "publish_fact", published_namespace(claims.org))
+    return {"published": publish_fact(_memory, claims, args["department"], args["text"], dt.datetime.now(dt.timezone.utc))}
+
+
 def _grant_activity(args: dict) -> dict:
     trail = grant_activity(_grants, args["grant_id"], _verified_email(args))
     return {"grant_id": args["grant_id"], "activity": _plain(trail)}
@@ -299,6 +317,7 @@ _DISPATCH = {
     "memory_search": _memory_search,
     "memory_write": _memory_write,
     "grant_activity": _grant_activity,
+    "publish_fact": _publish_fact,
 }
 
 

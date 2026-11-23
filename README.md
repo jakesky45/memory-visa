@@ -126,7 +126,7 @@ cdk destroy --all
 | `src/agents/domain_owners.py` | per-org approval authority |
 | `src/agents/access_requests.py` | request/approve/deny logic |
 | `src/tools/identity_interceptor.py` | resolves a caller's real Cognito identity before any tool runs |
-| `src/tools/access_request_tools.py` | the grant workflow, `memory_search`/`memory_write`, and `grant_activity` (what was read under a grant; not deployed yet) - nine MCP tools, one Lambda |
+| `src/tools/access_request_tools.py` | the grant workflow, `memory_search`/`memory_write`, and `grant_activity` (what was read under a grant), and `publish_fact` (a domain owner publishes a fact to the org; not deployed yet) - ten MCP tools, one Lambda |
 | `src/tools/grant_notifier.py` | DynamoDB Streams → Slack, both directions |
 | `src/tools/check_shipping_classification_tool.py` | the one real Engineering Gateway tool, a stub |
 | `src/agents/chat_agent.py` | the agent - Claude on Amazon Bedrock, with memory only through the Gateway tools and the user's own token |

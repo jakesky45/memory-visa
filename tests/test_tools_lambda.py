@@ -167,3 +167,17 @@ def test_the_owner_sees_what_was_read_under_the_grant(tools):
 
     assert call(tools, "grant_activity", MAYA, grant_id=grant_id)[0] == 200, "the requester may see her own grant"
     assert call(tools, "grant_activity", PRIYA, grant_id=grant_id)[0] == 403, "nobody else may"
+
+
+def test_publish_fact_is_for_the_owner_and_whoami_names_where_to_read_it(tools):
+    """N8: Liam publishes for Legal; Maya reads it with no grant."""
+    assert call(tools, "publish_fact", MAYA, department="legal", text="The X-7 is EAR99.")[0] == 403
+    status, body = call(tools, "publish_fact", LIAM, department="legal", text="The X-7 is classified 7A994.")
+    assert status == 200 and body["published"]["published_by"] == "liam@robotinc.example"
+
+    namespace = call(tools, "whoami", MAYA)[1]["memory"]["published_namespace"]
+    status, body = call(tools, "memory_search", MAYA, namespace=namespace, query="X-7")
+    assert status == 200
+    assert body["records"][0]["access"] == {"via": "published"}
+    assert body["records"][0]["metadata"]["department"] == "legal"
+    assert call(tools, "memory_write", MAYA, namespace=namespace, text="It is EAR99.")[0] == 403

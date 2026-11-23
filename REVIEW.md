@@ -54,7 +54,7 @@ not need one.
 | 4 | Jake | Meanwhile, prove the agent with an API key: `demo/agent_chat.py --provider anthropic`, runbook steps 3 and 4 | "Stage 3: the agent" |
 | 5 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
 | 6 | Claude | ~~Provenance on results, and reads in the audit table (N2)~~ **Written.** Jake: deploy and run the check | "N2: provenance and the audit trail" |
-| 7 | Claude | Published facts, the second way to share (N8). No model needed | "Next to build" |
+| 7 | Claude | ~~Published facts, the second way to share (N8)~~ **Written.** Jake: deploy and run the check | "N8: published facts" |
 | 8 | Claude | Search across every namespace the caller may read (N7) | "Next to build" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
@@ -97,6 +97,58 @@ On U7: the Anthropic SDK retries a failed call twice at most, and it does not re
 Dozens of model calls for one request means something outside this code sent the request
 again. `server.py` answers a failed model call with HTTP 502, and a 5xx invites a retry.
 Look at this again when a model call can succeed.
+
+### N8: published facts
+
+Written 23 November 2026. Tested offline; not deployed.
+
+The visa is the exception: one person, one namespace, a short time, a human approval. It
+does not scale to a fact that many people need. A published fact is the rule: the owner of
+a domain says it once, and everyone in the org can read it with no grant.
+
+| Change | What it does |
+|---|---|
+| `publish_fact`, a new tool | The owner of a department publishes one fact for it. Nobody else can, not even a member of the department. The agent does not have this tool |
+| The namespace `org_<org>_published` | Every member of the org may read it. Nobody writes to it with `memory_write`. Another org cannot read it |
+| Stored as written | The fact is one long-term record, written with `BatchCreateMemoryRecords`. No model rewords it. This is the answer to M5 for facts someone must trust |
+| The source is on the record | Metadata: `published_by`, `department`, `published_at`. A search result returns it, with `access: {"via": "published"}` |
+| The Guardrail and the audit trail | A published fact passes the Guardrail first. Publishing and each read are in the audit trail under `namespace#org_<org>_published` |
+| IAM | The tools Lambda may call `BatchCreateMemoryRecords` only for a namespace like `org_*_published` |
+| `whoami` | Names the published namespace, so a person or the agent knows where to search |
+| The agent | Searches the published namespace after the person's own, prefers a published fact, and says who published it |
+
+**Not proven**
+
+| # | Not proven | If it fails |
+|---|---|---|
+| P1 | Search returns a record written this way when it has no strategy ID. The AWS pages do not say | Deploy again with `-c publishedStrategyId=<the strategy_id shown in any search result>` |
+| P2 | The IAM condition on `BatchCreateMemoryRecords` matches. Both namespace forms are listed, as in T4 | Send me the `AccessDeniedException` |
+| P3 | Metadata comes back on a search result under `metadata` | The fact is still found; send me one raw result |
+| P4 | How soon a new record can be found | Wait a minute and search again |
+
+**To deploy and check.** No new image is needed.
+
+```bash
+make eval                                   # expect: 97 passed
+cd cdk && cdk diff MemoryVisaAgentCore      # expect: the tools Lambda code, one new tool, one new Cedar action, one new IAM statement
+cdk deploy MemoryVisaAgentCore && cd ..
+
+call "$MAYA" publish_fact '{"department":"legal","text":"The X-7 is EAR99."}'           # expect: 403, Maya does not own legal
+call "$LIAM" publish_fact '{"department":"legal","text":"The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal."}'
+# expect: 200, a recordId, published_by liam
+
+call "$MAYA" whoami '{}'                                                                 # expect: memory.published_namespace = org_robotinc_published
+call "$MAYA" memory_search '{"namespace":"org_robotinc_published","query":"X-7 classification"}'
+# expect: the fact, word for word, access {"via":"published"}, metadata with published_by and department. No grant.
+call "$MAYA" memory_write '{"namespace":"org_robotinc_published","text":"It is EAR99."}' # expect: 403
+```
+
+For the talk: Maya asks the agent about the X-7 and gets Legal's published answer with
+Liam's name on it, with no request and no wait. Then she asks for something Legal has not
+published, and that is where the visa comes in.
+
+Not built: taking a published fact back or replacing it (M9), project namespaces (S6), and
+the brokered answer.
 
 ### N2: provenance and the audit trail
 
@@ -621,7 +673,7 @@ In this order. Each is one change with its own tests.
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
 | N6 | An agent that calls a model and uses memory in a conversation | Scale | **Written and tested offline** (17 tests). Not deployed, not run against a real model. See "Stage 3: the agent" |
 | N7 | Search across every namespace the caller may read | M7 | To do, after N2 |
-| N8 | One more sharing pattern: a published fact, or a brokered answer. Project namespaces working live | Scale, S6 | To do |
+| N8 | One more sharing pattern: a published fact | Scale, S6 | **Written and tested offline** (14 tests). Not deployed. Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
 | N10 | Claims in the access token; the Cedar `forbid` made active | C1 | To do. Would also carry projects (S6) |
 

@@ -105,6 +105,16 @@ def grant_activity(grants: GrantStore, grant_id: str, caller_email: str) -> list
     return grants.audit_trail(grant_id)
 
 
+def publish_fact(memory, claims: UserClaims, department: str, text: str, now: dt.datetime) -> dict:
+    """Publish a fact for a department to the whole org. Only the department's owner may:
+    a published fact speaks for the department, and no grant is needed to read it."""
+    if not text or not text.strip():
+        raise InvalidRequestError("a published fact needs text")
+    if owner_of(claims.org, department) != claims.email:
+        raise NotDomainOwnerError(f"{claims.email} does not own domain '{department}' in org '{claims.org}'")
+    return memory.publish(claims, department, text.strip(), now)
+
+
 def revoke_request(grants: GrantStore, grant_id: str, revoker_email: str, now: dt.datetime) -> Grant:
     """Pull back a grant before it would otherwise expire - the break-glass path for an
     active grant. Not a substitute for disabling someone's IdP account entirely when they

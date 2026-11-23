@@ -8,12 +8,13 @@ namespace string passed as actorId/namespace here - not a resource per org.
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 import boto3
 
 
 class AgentCoreMemoryBackend:
-    def __init__(self, memory_id: str, region: str = "eu-west-2", visa_issuer=None) -> None:
+    def __init__(self, memory_id: str, region: str = "eu-west-2", visa_issuer=None, strategy_id: str | None = None) -> None:
         self._memory_id = memory_id
         self._region = region
         self._client = boto3.client("bedrock-agentcore", region_name=region)
@@ -21,6 +22,28 @@ class AgentCoreMemoryBackend:
         # credentials limited to one namespace and one window, and this process's
         # own role needs no permission to read memory at all.
         self._visa_issuer = visa_issuer
+        # Optional. The strategy a directly written record is grouped under.
+        self._strategy_id = strategy_id
+
+    def put_record(self, namespace: str, text: str, metadata: dict[str, str]) -> dict:
+        """Write one long-term record as it is, with BatchCreateMemoryRecords. No model
+        rewords it, and the metadata stays on it (REVIEW.md N8, M5). `put` is different:
+        it stores an event, and a model extracts the records later."""
+        record = {
+            "requestIdentifier": uuid.uuid4().hex,
+            "namespaces": [namespace],
+            "content": {"text": text},
+            "timestamp": dt.datetime.now(dt.timezone.utc),
+            "metadata": {key: {"stringValue": value} for key, value in metadata.items()},
+        }
+        if self._strategy_id:
+            record["memoryStrategyId"] = self._strategy_id
+        response = self._client.batch_create_memory_records(memoryId=self._memory_id, records=[record])
+        failed = response.get("failedRecords", [])
+        if failed:
+            raise RuntimeError(f"the record was not created: {failed[0].get('errorMessage', failed[0])}")
+        created = response.get("successfulRecords", [{}])[0]
+        return {"namespace": namespace, "recordId": created.get("memoryRecordId")}
 
     def put(self, namespace: str, text: str) -> dict:
         response = self._client.create_event(
@@ -62,5 +85,17 @@ def _record(summary: dict) -> dict:
         "created_at": created.isoformat() if hasattr(created, "isoformat") else created,
         "score": summary.get("score"),
         "strategy_id": summary.get("memoryStrategyId"),
+        "metadata": _plain_metadata(summary.get("metadata")),
     }
     return {key: value for key, value in record.items() if value is not None}
+
+
+def _plain_metadata(metadata) -> dict | None:
+    """{"published_by": {"stringValue": "liam@..."}} becomes {"published_by": "liam@..."}."""
+    if not metadata:
+        return None
+    plain = {}
+    for key, value in metadata.items():
+        inner = next(iter(value.values()), None) if isinstance(value, dict) else value
+        plain[key] = inner.isoformat() if hasattr(inner, "isoformat") else inner
+    return plain
