@@ -100,3 +100,79 @@ def test_an_empty_fact_is_refused(setup):
     memory, _ = setup
     with pytest.raises(InvalidRequestError):
         publish_fact(memory, LIAM, "legal", "   ", T0)
+
+
+# --- search across every namespace the caller may read (N7) --------------------
+
+from memory.grants import Grant  # noqa: E402
+
+ENG = "org_robotinc_dept_engineering"
+LEGAL = "org_robotinc_dept_legal"
+
+
+def test_one_search_covers_own_department_published_and_nothing_else(setup):
+    memory, _ = setup
+    memory.put(MAYA, ENG, "The X-7 firmware is version 4.2.", T0)
+    memory.put(LIAM, LEGAL, "The X-7 contract with Supplier X is under review.", T0)
+    publish_fact(memory, LIAM, "legal", FACT, T0)
+
+    found = memory.retrieve_all(MAYA, "X-7", T0)
+    assert {r["namespace"] for r in found["records"]} == {ENG, PUBLISHED}
+    assert LEGAL not in found["searched"], "Legal's own namespace is not searched: no grant"
+    assert all("under review" not in r["text"] for r in found["records"])
+    assert found["failed"] == []
+
+
+def test_an_approved_grant_adds_its_namespace_and_the_end_of_the_grant_removes_it(setup):
+    memory, grants = setup
+    memory.put(LIAM, LEGAL, "The X-7 contract with Supplier X is under review.", T0)
+    grants.request(
+        Grant(
+            grant_id="g-1",
+            requester_namespace="org_robotinc_user_maya@robotinc.example",
+            target_namespace=LEGAL,
+            reason="Export review.",
+            requested_at=T0,
+            duration=dt.timedelta(hours=1),
+        )
+    )
+    assert LEGAL not in memory.retrieve_all(MAYA, "X-7", T0)["searched"], "pending is not approved"
+    grants.approve("g-1", approved_by="liam@robotinc.example", now=T0)
+
+    found = memory.retrieve_all(MAYA, "X-7", T0 + dt.timedelta(minutes=5))
+    record = next(r for r in found["records"] if r["namespace"] == LEGAL)
+    assert record["access"]["via"] == "grant" and record["access"]["grant_id"] == "g-1"
+
+    assert LEGAL not in memory.retrieve_all(MAYA, "X-7", T0 + dt.timedelta(hours=2))["searched"]
+
+
+def test_each_namespace_searched_is_its_own_audit_entry(setup):
+    memory, grants = setup
+    found = memory.retrieve_all(MAYA, "X-7", T0)
+    reads = [e["target_namespace"] for e in grants.audit_log if e["event"] == "read"]
+    assert reads == found["searched"] and len(reads) == 3  # her own, her department, published
+
+
+def test_the_best_match_comes_first_whatever_its_namespace(setup):
+    memory, _ = setup
+    scores = {ENG: 0.4, PUBLISHED: 0.9}
+    memory._memory.retrieve = lambda namespace, query: (
+        [{"text": namespace, "score": scores[namespace]}] if namespace in scores else []
+    )
+    assert [r["namespace"] for r in memory.retrieve_all(MAYA, "X-7", T0)["records"]] == [PUBLISHED, ENG]
+
+
+def test_one_namespace_failing_does_not_hide_the_others(setup):
+    memory, _ = setup
+    publish_fact(memory, LIAM, "legal", FACT, T0)
+    real = memory._memory.retrieve
+
+    def flaky(namespace, query):
+        if namespace == ENG:
+            raise RuntimeError("ThrottledException")
+        return real(namespace, query)
+
+    memory._memory.retrieve = flaky
+    found = memory.retrieve_all(MAYA, "X-7", T0)
+    assert found["failed"] == [{"namespace": ENG, "error": "RuntimeError"}]
+    assert any(r["namespace"] == PUBLISHED for r in found["records"])

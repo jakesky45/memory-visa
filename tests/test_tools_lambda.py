@@ -181,3 +181,14 @@ def test_publish_fact_is_for_the_owner_and_whoami_names_where_to_read_it(tools):
     assert body["records"][0]["access"] == {"via": "published"}
     assert body["records"][0]["metadata"]["department"] == "legal"
     assert call(tools, "memory_write", MAYA, namespace=namespace, text="It is EAR99.")[0] == 403
+
+
+def test_memory_search_with_no_namespace_searches_what_the_caller_may_read(tools):
+    """N7: Maya does not need to know where a fact lives."""
+    call(tools, "memory_write", LIAM, namespace=LEGAL, text="Legal's private note on the X-7.")
+    call(tools, "publish_fact", LIAM, department="legal", text="The X-7 is classified 7A994.")
+
+    status, body = call(tools, "memory_search", MAYA, query="X-7")
+    assert status == 200
+    assert LEGAL not in body["searched"] and "org_robotinc_published" in body["searched"]
+    assert [r["text"] for r in body["records"]] == ["The X-7 is classified 7A994."]

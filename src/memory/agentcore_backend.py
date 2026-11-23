@@ -96,6 +96,8 @@ def _plain_metadata(metadata) -> dict | None:
         return None
     plain = {}
     for key, value in metadata.items():
+        if key.lower().startswith("x-amz-"):
+            continue  # AgentCore's own bookkeeping, not the fact's source
         inner = next(iter(value.values()), None) if isinstance(value, dict) else value
         plain[key] = inner.isoformat() if hasattr(inner, "isoformat") else inner
-    return plain
+    return plain or None

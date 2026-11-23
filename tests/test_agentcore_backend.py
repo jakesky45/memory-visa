@@ -64,3 +64,11 @@ def test_metadata_on_a_result_is_made_plain():
     }
     assert _record(summary)["metadata"] == {"published_by": "liam@robotinc.example", "department": "legal"}
     assert "metadata" not in _record({"content": {"text": "x"}})
+
+
+def test_agentcores_own_metadata_is_not_shown_as_the_source():
+    summary = {
+        "content": {"text": "x"},
+        "metadata": {"x-amz-agentcore-memory-recordType": {"stringValue": "BASE"}, "department": {"stringValue": "legal"}},
+    }
+    assert _record(summary)["metadata"] == {"department": "legal"}

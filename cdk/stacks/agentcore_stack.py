@@ -503,7 +503,7 @@ class AgentCoreStack(Stack):
                     ],
                 ),
             ),
-            timeout=Duration.seconds(10),
+            timeout=Duration.seconds(30),  # a search across namespaces is one visa and one read for each
             environment={
                 "GRANTS_TABLE_NAME": self.grants_table.table_name,
                 "GRANTS_AUDIT_TABLE_NAME": self.grants_audit_table.table_name,
@@ -619,14 +619,16 @@ class AgentCoreStack(Stack):
             agentcore.CfnGatewayTarget.ToolDefinitionProperty(
                 name="memory_search",
                 description=(
-                    "Search a Memory namespace. The caller's own namespace, or another org/department's "
-                    "only while an active grant covers it - reads outside a grant use credentials IAM "
-                    "scopes to that one namespace until the grant ends."
+                    "Search Memory. With no namespace, search every namespace the caller may read now: "
+                    "their own, their department's, the org's published facts, and any namespace an "
+                    "active grant opens. With a namespace, search that one. Each result says which "
+                    "namespace it came from and how the caller was allowed. Every read uses credentials "
+                    "IAM scopes to one namespace until the grant ends."
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {"namespace": {"type": "string"}, "query": {"type": "string"}},
-                    "required": ["namespace", "query"],
+                    "required": ["query"],
                 },
             ),
             agentcore.CfnGatewayTarget.ToolDefinitionProperty(

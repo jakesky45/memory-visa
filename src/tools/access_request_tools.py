@@ -269,9 +269,14 @@ def _memory_search(args: dict) -> dict:
     if _memory is None:
         raise RuntimeError("memory backend not configured - MEMORY_ID/MEMORY_ARN not set")
     claims = _claims_from(args)
-    _log_usage(claims, "memory_search", args["namespace"], query=args["query"])
-    records = _memory.retrieve(claims, args["namespace"], args["query"], dt.datetime.now(dt.timezone.utc))
-    return {"records": records}
+    namespace = args.get("namespace")
+    now = dt.datetime.now(dt.timezone.utc)
+    if not namespace:
+        # No namespace: search everything this caller may read (N7).
+        _log_usage(claims, "memory_search", "*", query=args["query"])
+        return _memory.retrieve_all(claims, args["query"], now)
+    _log_usage(claims, "memory_search", namespace, query=args["query"])
+    return {"records": _memory.retrieve(claims, namespace, args["query"], now)}
 
 
 def _memory_write(args: dict) -> dict:

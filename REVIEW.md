@@ -55,7 +55,7 @@ not need one.
 | 5 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
 | 6 | Claude | ~~Provenance on results, and reads in the audit table (N2)~~ **Written.** Jake: deploy and run the check | "N2: provenance and the audit trail" |
 | 7 | Claude | ~~Published facts, the second way to share (N8)~~ **Written.** Jake: deploy and run the check | "N8: published facts" |
-| 8 | Claude | Search across every namespace the caller may read (N7) | "Next to build" |
+| 8 | Claude | ~~Search across every namespace the caller may read (N7)~~ **Written.** Jake: deploy and run the check | "N7: one search across what you may read" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
@@ -97,6 +97,47 @@ On U7: the Anthropic SDK retries a failed call twice at most, and it does not re
 Dozens of model calls for one request means something outside this code sent the request
 again. `server.py` answers a failed model call with HTTP 502, and a 5xx invites a retry.
 Look at this again when a model call can succeed.
+
+### N7: one search across what you may read
+
+Written 23 November 2026. Tested offline; not deployed.
+
+| Change | What it does |
+|---|---|
+| `memory_search` with no `namespace` | Searches every namespace the caller may read now: their own, their department's, the org's published facts, and any namespace an open grant covers. Nothing else |
+| Each namespace is one ordinary read | The same check, the same visa, the same audit entry. A search across five namespaces is five scoped reads, not one wide one. That is the point to make on stage: wider search did not need wider credentials |
+| The answer | `records` (best match first, at most 10, each with its namespace and how it was allowed), `searched`, and `failed`. One namespace failing does not hide the others |
+| The tools Lambda's timeout | 10 seconds to 30, because each namespace is one visa and one read |
+| The agent | Leaves out the namespace by default |
+| Metadata on a result | AgentCore's own `x-amz-...` fields are left out, so `metadata` is only the source of the fact |
+
+**Not proven**
+
+| # | Not proven | If it fails |
+|---|---|---|
+| Q1 | The Gateway accepts `memory_search` with no `namespace` after the schema change | Send me the error |
+| Q2 | How long a search across three or four namespaces takes. Each is one `AssumeRole` and one search, and each scans the grants table (N5) | Send me the time. If it is over two seconds, I will issue the visas side by side |
+| Q3 | Scores from different namespaces compare well enough to rank together | Send me one answer with its scores |
+| P6 | IAM refuses a direct record write outside a published namespace. The N8 run proved the allowed case only; the Python refuses first, so no tool call can reach the IAM line | A small script like `demo/visa_credentials_demo.py`. I will write it if you want the proof on stage |
+
+**To deploy and check.** No new image is needed. Docker must be running for the bundling.
+
+```bash
+make eval                                   # expect: 104 passed
+cd cdk && cdk diff MemoryVisaAgentCore      # expect: the tools Lambda code and timeout, and the memory_search tool's description and schema
+cdk deploy MemoryVisaAgentCore && cd ..
+
+time call "$MAYA" memory_search '{"query":"X-7 classification"}'
+# expect: Legal's published fact, with namespace org_robotinc_published and access {"via":"published"};
+#         "searched" lists Maya's own namespace, org_robotinc_dept_engineering and org_robotinc_published;
+#         org_robotinc_dept_legal is not in "searched"; metadata has no x-amz fields
+
+# With an approved grant for Maya on Legal:
+call "$MAYA" memory_search '{"query":"X-7"}'
+# expect: "searched" now has org_robotinc_dept_legal, and its records say access via grant
+
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7"}'       # one namespace still works as before
+```
 
 ### N8: published facts
 
@@ -677,7 +718,7 @@ In this order. Each is one change with its own tests.
 | N2 | Results carry provenance: record ID, namespace, time, score, and how the caller was allowed. Reads and writes go to the audit table with the outcome and the grant ID | M4, M10, S9 | **Done, deployed and proven live** (12 tests). The author is in the audit trail, not on the record: that needs N9. See "N2: provenance and the audit trail" |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
 | N6 | An agent that calls a model and uses memory in a conversation | Scale | **Written and tested offline** (17 tests). Not deployed, not run against a real model. See "Stage 3: the agent" |
-| N7 | Search across every namespace the caller may read | M7 | To do, after N2 |
+| N7 | Search across every namespace the caller may read | M7 | **Written and tested offline** (7 tests). Not deployed. See "N7: one search across what you may read" |
 | N8 | One more sharing pattern: a published fact | Scale, S6 | **Done, deployed and proven live** (14 tests). Found and fixed a real SDK-version bug along the way (P5). Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
 | N10 | Claims in the access token; the Cedar `forbid` made active | C1 | To do. Would also carry projects (S6) |

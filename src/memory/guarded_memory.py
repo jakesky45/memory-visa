@@ -82,6 +82,30 @@ class GuardedMemory:
             allowed.add(grant.target_namespace)
         return allowed
 
+    def readable_namespaces(self, claims: UserClaims, now: dt.datetime) -> list[str]:
+        """Every namespace this caller may read now, in a fixed order: their own, their
+        departments and projects, the org's published facts, then any open grant."""
+        own = sorted(static_namespaces(claims))
+        granted = sorted(g.target_namespace for g in self._grants.active_grants_for(requester_namespace(claims), now))
+        ordered = own + [published_namespace(claims.org)] + granted
+        return list(dict.fromkeys(ordered))
+
+    def retrieve_all(self, claims: UserClaims, query: str, now: dt.datetime, limit: int = 10) -> dict:
+        """Search every namespace the caller may read, and nothing else (N7, M7). The
+        caller does not need to know where a fact lives. Each namespace is one ordinary
+        `retrieve`: the same check, the same visa, the same audit entry. So a search
+        across five namespaces is five scoped reads, not one wide one."""
+        searched, failed, results = [], [], []
+        for namespace in self.readable_namespaces(claims, now):
+            try:
+                results.extend(self.retrieve(claims, namespace, query, now))
+                searched.append(namespace)
+            except Exception as error:  # one namespace failing does not hide the others
+                failed.append({"namespace": namespace, "error": type(error).__name__})
+        # Best match first. The scores come from one memory and one model, so they compare.
+        results.sort(key=lambda r: r.get("score") if isinstance(r.get("score"), (int, float)) else -1.0, reverse=True)
+        return {"records": results[:limit], "searched": searched, "failed": failed}
+
     def _check(self, claims: UserClaims, namespace: str, now: dt.datetime) -> None:
         self._authorising_grant(claims, namespace, now)
 
