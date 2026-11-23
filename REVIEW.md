@@ -100,7 +100,7 @@ Look at this again when a model call can succeed.
 
 ### N2: provenance and the audit trail
 
-Written 23 November 2026. Tested offline; not deployed.
+Written 23 November 2026. **Deployed and proven live the same day** - see the real run below.
 
 | Change | What it does |
 |---|---|
@@ -114,28 +114,26 @@ What it does not do: the author is not on the record. A long-term record is extr
 model from events, and AgentCore does not carry the writer onto it. The audit trail has
 the writer and the event ID. Putting the author on the record needs N9.
 
-Not proven: the field names I read from the `RetrieveMemoryRecords` answer
-(`memoryRecordId`, `createdAt`, `score`, `memoryStrategyId`). A field that is absent is left
-out and nothing fails, so the check below shows which ones are real.
+**Run 23 November 2026, against the deployed stack. Every field was real - nothing from the
+"not proven" list above turned out absent.** `cdk diff` matched exactly (the tools Lambda
+code, one new tool, one new Cedar action); `cdk deploy` was clean.
 
-To deploy and check. No new image is needed: only the tools Lambda, the tool list and the
-Cedar permit change.
-
-```bash
-make eval                                   # expect: 83 passed
-cd cdk && cdk diff MemoryVisaAgentCore      # expect: the tools Lambda code, one new tool, one new action in the permit
-cdk deploy MemoryVisaAgentCore && cd ..
-
-call "$LIAM" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7"}'
-# expect: each record has record_id, created_at, score, namespace, and access {"via":"membership"}
-
-# With an approved grant for Maya (stage 2 runbook, step 9):
-call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7"}'
-call "$MAYA" memory_write '{"namespace":"org_robotinc_dept_legal","text":"test"}'      # refused
-call "$LIAM" grant_activity '{"grant_id":"<id>"}'
-# expect: requested, approved, read (Maya, her question, the record IDs), write_refused
-call "$PRIYA" grant_activity '{"grant_id":"<id>"}'                                       # expect: 403
 ```
+Liam writes: memory_write -> 200, eventId 0000001795437247409#7102f70e
+Liam searches, no grant: memory_search -> 200, four records, each with record_id,
+  created_at, score, strategy_id, namespace, and access {"via": "membership"}
+Maya requests, Liam approves (10 minutes: grant_id 3a440edd-...)
+Maya searches, under the grant: the same four records, now access {"via": "grant",
+  "grant_id": "3a440edd-...", "approved_by": "liam@robotinc.example", "expires_at": "..."}
+Maya writes under the grant: 403 "a grant never allows a write"
+grant_activity as Liam (owner): requested, approved, read (Maya's query and all four
+  record IDs), write_refused - in order, in one call
+grant_activity as Maya (requester): the same four events - both sides of a grant see it
+grant_activity as Priya (neither): 403 "is not the owner of 'legal' and did not request"
+```
+
+`memoryRecordId`, `createdAt`, `score` and `memoryStrategyId` are all real fields on a live
+`RetrieveMemoryRecords` answer - confirmed, not assumed.
 
 For the talk this is a fifth beat: Liam asks his own client "what did Maya read under that
 grant?" and gets the answer.
@@ -619,7 +617,7 @@ In this order. Each is one change with its own tests.
 | N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. The claims body and the body-driven approvals removed | M1 | **Done and deployed** (`3db97ab`), proved live in stage 2 |
 | N3 | Apply the guardrail on write | M6 | **Done and deployed.** S2 and S3 fixed. The live write path works; not yet exercised with content that should trip a rule |
 | N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | **Done.** 24 tests |
-| N2 | Results carry provenance: record ID, namespace, time, score, and how the caller was allowed. Reads and writes go to the audit table with the outcome and the grant ID | M4, M10, S9 | **Written and tested offline** (12 tests). Not deployed. The author is in the audit trail, not on the record: that needs N9. See "N2: provenance and the audit trail" |
+| N2 | Results carry provenance: record ID, namespace, time, score, and how the caller was allowed. Reads and writes go to the audit table with the outcome and the grant ID | M4, M10, S9 | **Done, deployed and proven live** (12 tests). The author is in the audit trail, not on the record: that needs N9. See "N2: provenance and the audit trail" |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
 | N6 | An agent that calls a model and uses memory in a conversation | Scale | **Written and tested offline** (17 tests). Not deployed, not run against a real model. See "Stage 3: the agent" |
 | N7 | Search across every namespace the caller may read | M7 | To do, after N2 |
