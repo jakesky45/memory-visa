@@ -40,6 +40,21 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 
 The three live checks above are done (T3, T4, S12) - see each row for the result.
 
+### Ninth review: the AWS pages on temporal policies, read in full
+
+23 November 2026. Jake asked whether the per-caller claim is true. I read the three pages
+myself (`policy-temporal`, `policy-temporal-authoring`, `policy-session-based-temporal`) and
+the examples page (`example-policies-temporal`), not a summary of them.
+
+| # | Claim | What the AWS pages say | State |
+|---|---|---|---|
+| W1 | "Two different callers supplying the same session ID get isolated sessions" | **True, word for word.** Under "Principal binding", for `CUSTOM_JWT` and `AWS_IAM` Gateways. The Gateway in this repo is `CUSTOM_JWT` | Quote kept |
+| W2 | A Gateway with no authentication is different | **True.** "All callers who supply the same session ID share a single temporal policy event stream" | Not in the post; not relevant to this Gateway |
+| W3 | "no amount of policy configuration will make it hold an approval"; README and pitch: "can't model a two-person approval" | **Too strong.** AWS's first example of a temporal policy is "require a prior approval": `disburse_payment` is allowed only after `approve_claim` returned in the same session. What a policy cannot see is an approval made by a second person in their own session | **Fixed** in the blog, README and pitch: "cannot see a second person's approval" |
+| W4 | So is the grant table needed? | **Yes, by inference, not by an AWS statement.** History is "scoped to the session", a session belongs to one caller, it ends 24 hours after its last use, and a condition's window is 24 hours at most. An approval by another person must be stored outside the session | Said in the post as our reasoning |
+| W5 | Could Dogwood enforce the grant anyway? | **Probably, and we have not tried.** A policy could permit `memory_search` only when a tool in Maya's own session returned an approved grant for that namespace. That would give the policy engine real work (C1). Costs, from the pages: every request must then carry the `x-amzn-bedrock-agentcore-policy-session-id` header or it fails; the tool must declare an output schema for the policy to read its result; a policy change ends open sessions with a 409 | Said in the post in two sentences. Not built. Worth a slide: "what we would try next" |
+| W6 | "Dogwood" is AWS's name; it "extends the authorization model of Cedar" | **True.** Also: it is open source, and temporal policies are available in Europe (London) | Wording already matches |
+
 ### Seventh review: people or agents
 
 23 November 2026. Jake's question: "we talk about agents being allowed or humans being

@@ -553,14 +553,16 @@
 
     <p>Before building a custom grant store, the obvious question is whether AgentCore already handles time-boxed access out of the box. It comes close: AWS ships <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html">Dogwood</a>, a policy language that extends Cedar's authorization model with stateful, session-aware conditions, so a policy can reason over what happened earlier in a session (<a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal-authoring.html">authoring guide</a>; good background on the policy-session mechanics in <a href="https://sph.sh/en/posts/dogwood-temporal-policy-language/">sph.sh's writeup</a> and a practical walkthrough at <a href="https://subagentic.ai/howtos/how-to-write-your-first-temporal-policy-agentcore-dogwood/">subagentic.ai</a>).</p>
 
-    <p>The limit is whose history a policy can see. Each caller has their own: a policy that runs on Maya's request sees what Maya did earlier, and nothing that Liam did. AWS's <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-session-based-temporal.html">documentation</a> says so for a Gateway that authenticates its callers: "Two different callers supplying the same session ID get isolated sessions &mdash; the identity is part of the session key."</p>
+    <p>The limit is whose history a policy can see. A policy looks at one session, and on a Gateway that authenticates its callers a session belongs to one caller. AWS's <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-session-based-temporal.html">documentation</a> says: "Two different callers supplying the same session ID get isolated sessions &mdash; the identity is part of the session key." So a policy that runs on Maya's request sees what Maya did earlier in her session, and nothing that Liam did in his.</p>
 
     <ul>
-    <li>What it solves: "Did Maya call RunTests before calling Deploy?" One person, one session.</li>
-    <li>What it can't see: "Did Liam approve a grant unlocking Legal's files for Maya?" Two people, two separate sessions.</li>
+    <li>What it can check: "Did Maya call RunTests before calling Deploy?" One person, one session. AWS's own examples are of this kind, including "require an approval before a payout", where the approval and the payout are two calls in the same session.</li>
+    <li>What it cannot see: "Did Liam approve a grant for Maya?" Two people, two sessions.</li>
     </ul>
 
-    <p>An access grant is inherently a two-person handshake - one person asks, someone else approves. Because Dogwood can't look across callers, no amount of policy configuration will make it hold an approval.</p>
+    <p>A grant is a handshake between two people: one asks and another approves, often hours apart. The approval has to be stored somewhere that outlives both sessions and that both people's requests can reach. That is a table, not a session history.</p>
+
+    <p>To be fair to Dogwood, it could still enforce the result. A policy could require that a tool call in Maya's own session reported an approved grant before her read is allowed. That would use the same table, and it is not built here.</p>
 
     <p>That's why the grant lives in its own table, <code>GrantStore</code>. Cedar does less here than the name on the box suggests, and it is better to say so: today it holds one baseline <code>permit</code> for the tools, and the department rule it was meant to enforce cannot fire on this auth path (more on that below). The grant is checked in the tools Lambda, and the read it allows is then enforced by IAM. Static isolation stays as it is; <code>GrantStore</code> sits on top as an audited exception layer.</p>
 

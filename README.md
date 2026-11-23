@@ -19,7 +19,7 @@ The same workflow covers a narrower starting point too: Jordan, a contractor, ex
 
 ![memory-visa architecture](docs/diagrams/architecture.svg)
 
-Cedar policies and Cognito JWT claims handle static org/department isolation - that's standard AgentCore. The addition here is `GrantStore`, an external entitlements store backing that same Cedar ABAC, rather than AgentCore's [Dogwood](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html) temporal policies - Dogwood's session history is scoped to one caller, so it can't model a two-person approval (requester and approver).
+Static isolation comes from the caller's verified Cognito identity and the namespace rules in the tools Lambda. The addition here is `GrantStore`, a table of approved exceptions. AgentCore's [Dogwood](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html) temporal policies were considered for this: a policy sees one caller's session, so it cannot see a second person's approval made in their own session. The approval has to live outside the session, which is the table.
 
 ## Status
 
