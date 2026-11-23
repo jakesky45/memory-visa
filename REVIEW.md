@@ -52,7 +52,7 @@ the examples page (`example-policies-temporal`), not a summary of them.
 | W2 | A Gateway with no authentication is different | **True.** "All callers who supply the same session ID share a single temporal policy event stream" | Not in the post; not relevant to this Gateway |
 | W3 | "no amount of policy configuration will make it hold an approval"; README and pitch: "can't model a two-person approval" | **Too strong.** AWS's first example of a temporal policy is "require a prior approval": `disburse_payment` is allowed only after `approve_claim` returned in the same session. What a policy cannot see is an approval made by a second person in their own session | **Fixed** in the blog, README and pitch: "cannot see a second person's approval" |
 | W4 | So is the grant table needed? | **Yes, by inference, not by an AWS statement.** History is "scoped to the session", a session belongs to one caller, it ends 24 hours after its last use, and a condition's window is 24 hours at most. An approval by another person must be stored outside the session | Said in the post as our reasoning |
-| W5 | Could Dogwood enforce the grant anyway? | **Probably, and we have not tried.** A policy could permit `memory_search` only when a tool in Maya's own session returned an approved grant for that namespace. That would give the policy engine real work (C1). Costs, from the pages: every request must then carry the `x-amzn-bedrock-agentcore-policy-session-id` header or it fails; the tool must declare an output schema for the policy to read its result; a policy change ends open sessions with a 409 | Said in the post in two sentences. Not built. Worth a slide: "what we would try next" |
+| W5 | Could Dogwood enforce the grant anyway? | **Tried, and the answer is no, not for a two-person approval.** A spike confirmed live, 23 November 2026, that it can enforce "this caller checked before reading" (a self-serve pattern), but a second caller's check is invisible to the first caller's session even with the same session ID. See "Exploring: let Dogwood enforce the grant" for the ten checks | Said in the post in two sentences. Confirmed, not built into the main stack - the grant table remains the only place a two-person approval can live |
 | W6 | "Dogwood" is AWS's name; it "extends the authorization model of Cedar" | **True.** Also: it is open source, and temporal policies are available in Europe (London) | Wording already matches |
 
 ### Exploring: let Dogwood enforce the grant
@@ -119,28 +119,48 @@ on the same Cognito pool, with its own policy engine, one Lambda and two tools. 
 3. Liam checks in session X, Maya reads in session X: expect refused, if sessions are per caller. This is the test of the quote in the blog.
 4. Maya checks, waits past the window, reads: expect refused.
 
-**The spike is written (23 November 2026). Not yet run.** It is its own CDK app, so it
-does not build or touch the main stacks and needs no Docker. It uses the main stack's
-Cognito pool, and makes two throwaway users with a random password.
+**Run 23 November 2026, against the sandbox account. All ten checks passed on the first
+run, including the one that mattered.**
 
 | File | What it is |
 |---|---|
-| `cdk/spike_app.py`, `cdk/stacks/dogwood_spike_stack.py` | A second Gateway, its own policy engine, one Lambda, three tools, a plain permit for `check_grant`. `cdk synth` passes |
+| `cdk/spike_app.py`, `cdk/stacks/dogwood_spike_stack.py` | A second Gateway, its own policy engine, one Lambda, three tools, a plain permit for `check_grant`. Deployed and destroyed cleanly |
 | `spike/spike_tools.py` | `check_grant`, `visa_read_a`, `visa_read_b` |
-| `spike/dogwood_spike.py` | `policies` creates the two temporal policies and prints any error from AWS; `test` runs ten checks and prints expected against got; `teardown` deletes the policies and the users |
+| `spike/dogwood_spike.py` | `policies` creates the two temporal policies; `test` runs ten checks; `teardown` deletes the policies and the two users |
 
-```bash
-pip install "aws-cdk-lib>=2.170.0" constructs boto3
-cd cdk && npx cdk --app "python3 spike_app.py" deploy MemoryVisaDogwoodSpike --require-approval never && cd ..
-python3 spike/dogwood_spike.py policies
-python3 spike/dogwood_spike.py test          # about two minutes; check 9 waits for the window
-python3 spike/dogwood_spike.py teardown
-cd cdk && npx cdk --app "python3 spike_app.py" destroy MemoryVisaDogwoodSpike --force && cd ..
+**One deploy-time finding, fixed:** the plain `check_grant` permit refused to create at all
+under `validation_mode="FAIL_ON_ANY_FINDINGS"` - Cedar's own analysis calls it "Overly
+Permissive... will allow every request for the specified principal, action and resource
+combination". True, and the point: `check_grant` is meant to be unconditional: the real
+gating is the two temporal policies, added separately, after. Changed to
+`IGNORE_ALL_FINDINGS` for this one policy and it deployed clean.
+
+```
+ 0. A: check_grant, with a session ID                                    ALLOW  ok
+ 1. A: check_grant then visa_read_a, same namespace, same session        ALLOW  ok
+ 2. A: visa_read_a in a new session, no check                            DENY   ok
+ 3. A: check_grant for legal, then visa_read_a for finance, same session DENY   ok
+ 4. B: check_grant in session X. Then A: visa_read_a in session X        DENY   ok  <- the question
+ 5. A: check_grant fails (the tool raises), then visa_read_a             DENY   ok
+ 6. A: check_grant with no session ID header                             DENY   ok
+ 7. A: check_grant returns active:true, then visa_read_b                 ALLOW  ok
+ 8. A: check_grant returns active:false, then visa_read_b                DENY   ok
+ 9. A: check_grant, wait past the 1m window, then visa_read_a            DENY   ok
 ```
 
-Check 4 is the one that matters: B checks in session X, then A reads in session X. DENY
-means sessions are per caller, as the AWS page says. ALLOW means one session holds two
-callers, and a policy could see Liam's approval directly.
+**Check 4 is answered, cleanly: DENY.** Liam's `check_grant` event, in session X, is
+invisible to Maya's `visa_read_a` request in that same session ID a moment later. Sessions
+are isolated per caller, exactly as the AWS session page says - the "correlate on
+`eventPrincipal`" wording on the examples page does not mean what it looked like it might
+mean. **The idea above does not get stronger.** Dogwood can enforce "this same caller
+checked before reading" (checks 0-3, 5-9 all confirm the mechanism works exactly as
+designed for that), but it cannot see a second person's approval, full stop. W4's
+conclusion stands without qualification: the grant table is the only place a two-person
+approval can live.
+
+Deployed, tested, torn down: the policies, the two throwaway Cognito users, and the spike
+stack are all gone. The main stacks were never touched - confirmed, `aws cloudformation
+describe-stacks` after teardown shows only the three real stacks.
 
 ### Seventh review: people or agents
 

@@ -164,7 +164,12 @@ class DogwoodSpikeStack(Stack):
                 )
             ),
             enforcement_mode="ACTIVE",
-            validation_mode="FAIL_ON_ANY_FINDINGS",
+            # Confirmed live, 23 November 2026: FAIL_ON_ANY_FINDINGS refuses to create this
+            # policy at all - "Overly Permissive... will allow every request for the
+            # specified principal, action and resource combination". True, and the point:
+            # check_grant is meant to be callable unconditionally. The real gating is the
+            # two temporal policies on visa_read_a/visa_read_b, added separately below.
+            validation_mode="IGNORE_ALL_FINDINGS",
             description="check_grant is allowed for any signed-in caller",
         )
         base_permit.node.add_dependency(target)
