@@ -769,19 +769,24 @@ In this order. Each is one change with its own tests.
 
 ### The blog
 
-The blog was updated in `3db97ab`. What changed, and what is still open:
+Reworked 23 November 2026 (`docs/index.html`). What changed, and what is still open:
 
 | Blog | State |
 |---|---|
-| The Cognito row now says the access tokens carry no custom claims | Fixed. This was a contradiction in B3 |
-| "For Memory, a grant is read-only" | Fixed, and correct |
-| The memory section describes the tools and the deleted claims-body path | Correct, and a good story: say what was wrong and that it is gone |
-| The `memory_write`, `memory_search` and `tools/list` transcripts | Labelled as expected output. Replace with real output after stage 2 |
-| Jordan's `whoami` transcript shows Engineering's tools under his grant | True only for a request with `include_tools`. His `request_access` line in the post does not show it. Update both when the transcripts are re-run |
-| "a log line records who asked" | Correct, and the caveat about the audit table is right |
-| Nothing about AWS enforcing the boundary | Still missing. Add it once A8 passes: "the boundary and the expiry are enforced by IAM, not by our code" |
-| "built on Cedar"; "GrantStore backing ordinary Cedar ABAC" | Still not accurate (B3, C1) |
-| "five tools" in the older sections | Still there beside "eight tools". Use one number |
+| Title and opening | **Changed.** "Isolated by Default, Shareable on Purpose", with the three answers up front: publish most facts, a visa for the exception, AWS enforces both (B1) |
+| "Five Ways to Share" | **New.** The five patterns, with which are live and which are not |
+| "A Shell Trap Worth Knowing" | **Removed as a section.** It was a detour from the argument. Three sentences remain in the Quickstart |
+| "AWS Enforces It, Not Our Code" | **New**, in its place. The session policy as the code builds it, and the three real lines from the visa proof |
+| "Publish Once, Read Everywhere" | **New.** From the live N8 run |
+| "One Search, Still Scoped" | **New.** From the live N7 run, with the two to four seconds stated |
+| "What the Owner Sees Afterwards" | **New.** The audit trail and `grant_activity`, from the live N2 run |
+| "Maya Gets Her Fact" | The two setup bugs are now one sentence (B2). The claim that a read is only a log line is gone: reads are in the audit table. Says that results now carry provenance. The JSON transcript is still the one from the first run |
+| "built on Cedar"; "GrantStore backing ordinary Cedar ABAC" | **Fixed.** Says what Cedar does today and where the grant is checked (B3, C1) |
+| Tool counts | **Fixed.** Ten tools; the Quickstart list has all ten |
+| The orchestrator | **Fixed.** Says it holds an agent that has not yet answered with a real model, so the post shows the tools and not the agent |
+| Identity binding | One short paragraph on the header-case mistake, as a lesson |
+| Staleness | Says a published fact cannot yet be withdrawn |
+| Still open | The new transcripts are shortened from the run records, not raw JSON: replace them with raw output when you next run the tools. The facts in B4 (the name "Dogwood", the AWS blog's date, the GA dates) still need your check (D6). The middle sections ("No Bespoke UI" to "whoami") are still long and could lose a third. Beats 1 and 2 are not in the post, because no model has answered yet |
 
 ### The demo, in four beats
 
