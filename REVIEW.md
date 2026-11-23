@@ -58,7 +58,7 @@ not need one.
 | 8 | Claude | ~~Search across every namespace the caller may read (N7)~~ **Done, deployed and proven live.** Found a real pre-existing bug along the way (Q4): a caller's own user namespace can't be read, ever - M8's redesign, not a small fix | "N7: one search across what you may read" |
 | 8 | Claude | ~~Deploy the fix for Q4 (a person's own namespace) and run the check~~ **Done, deployed and proven live** | "N7: one search across what you may read" |
 | 8a | Jake | Stop GitHub serving the old commits that hold the account and policy IDs: ask GitHub Support to remove them, or delete the repository and push it again. Then delete `/tmp/memory-visa-before-scrub.bundle` on the first machine | U9 |
-| 8b | Jake | Say if you want the proof that IAM refuses a direct record write outside a published namespace (P6). Claude writes the script | "N7: one search across what you may read" |
+| 8b | Jake | Run the proof that IAM refuses a direct record write outside a published namespace (P6): `cdk deploy MemoryVisaAgentCore -c visaDemoPrincipalArn=<your role ARN>`, then `python3 demo/publish_boundary_demo.py`. Expected: line 1 ALLOWED, lines 2 and 3 `REFUSED by AWS: AccessDeniedException`. The deploy adds one demo-only role (`memory-visa-publisher-demo`) with the tools Lambda's publish statement and nothing else. Not proven: that `delete_memory_record` clean-up works | `demo/publish_boundary_demo.py` |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
@@ -149,8 +149,8 @@ need yet to issue visas side by side; and scores across the published namespace 
 grant-scoped department namespace ranked sensibly against each other (the published fact
 came first both times).
 
-P6 (IAM refuses a direct write outside a published namespace) is still unverified - say if
-you want that proof script.
+P6 (IAM refuses a direct write outside a published namespace) is still unverified. The
+proof script is written: `demo/publish_boundary_demo.py`. See "What now", row 8b.
 
 **Fixed in code after the run, without the M8 redesign. Deployed and proven live the same
 day.** The first note here said the fix needed M8. It does not: only the person's own

@@ -891,15 +891,37 @@ class AgentCoreStack(Stack):
         # N8: publish_fact writes one long-term record directly, and only into a
         # published namespace. IAM holds that line, not only the Python: the condition
         # lists both forms of the namespace, because both matched in the visa check (T4).
-        self.access_request_tools_fn.add_to_role_policy(
-            iam.PolicyStatement(
+        def publish_statement() -> iam.PolicyStatement:
+            return iam.PolicyStatement(
                 actions=["bedrock-agentcore:BatchCreateMemoryRecords"],
                 resources=[self.memory.attr_memory_arn],
                 conditions={
                     "StringLike": {"bedrock-agentcore:namespace": ["org_*_published", "/org_*_published/"]},
                 },
             )
-        )
+
+        self.access_request_tools_fn.add_to_role_policy(publish_statement())
+        # For demo/publish_boundary_demo.py only (REVIEW.md P6): a role with this one
+        # statement and nothing else, so a laptop can show IAM refusing a direct write
+        # outside a published namespace. The tools Lambda's Python refuses first, so no
+        # tool call can reach that line. Off unless the same context value as the visa
+        # demo is set:  cdk deploy -c visaDemoPrincipalArn=<your role ARN>
+        if demo_principal_arn:
+            publisher_demo_role = iam.Role(
+                self,
+                "PublisherDemoRole",
+                role_name="memory-visa-publisher-demo",
+                description="Demo only. The tools Lambda's publish statement, alone, to show IAM enforcing it.",
+                assumed_by=iam.ArnPrincipal(demo_principal_arn),
+                max_session_duration=Duration.hours(1),
+            )
+            publisher_demo_role.add_to_policy(publish_statement())
+            ssm.StringParameter(
+                self,
+                "ParamPublisherDemoRoleArn",
+                parameter_name="/memory-visa/publisher-demo-role-arn",
+                string_value=publisher_demo_role.role_arn,
+            )
         # Optional: the strategy a published record is grouped under. Set it only if
         # search does not return published facts without it (REVIEW.md, N8 check).
         strategy_id = self.node.try_get_context("publishedStrategyId")
