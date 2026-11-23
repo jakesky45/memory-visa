@@ -56,6 +56,7 @@ not need one.
 | 6 | Claude | ~~Provenance on results, and reads in the audit table (N2)~~ **Done, deployed and proven live** | "N2: provenance and the audit trail" |
 | 7 | Claude | ~~Published facts, the second way to share (N8)~~ **Done, deployed and proven live** | "N8: published facts" |
 | 8 | Claude | ~~Search across every namespace the caller may read (N7)~~ **Done, deployed and proven live.** Found a real pre-existing bug along the way (Q4): a caller's own user namespace can't be read, ever - M8's redesign, not a small fix | "N7: one search across what you may read" |
+| 8 | Jake | Deploy the fix for Q4 (a person's own namespace) and run the check | "N7: one search across what you may read" |
 | 8a | Jake | Stop GitHub serving the old commits that hold the account and policy IDs: ask GitHub Support to remove them, or delete the repository and push it again. Then delete `/tmp/memory-visa-before-scrub.bundle` on the first machine | U9 |
 | 8b | Jake | Say if you want the proof that IAM refuses a direct record write outside a published namespace (P6). Claude writes the script | "N7: one search across what you may read" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
@@ -129,9 +130,30 @@ happen depending on how it's reached:
   is not one of the exception types `access_request_tools.py`'s handler catches, so it reaches
   the caller as a bare `"An internal error occurred. Please retry later."`, no explanation.
 
-**Not fixed - this is the M8 redesign (hierarchical namespaces), not a small patch.** Until
-then: a person's own conversational memory is only reachable through the fan-out search
-(where the failure is silent and harmless), never by naming it directly.
+**Fixed in code after the run, without the M8 redesign. Written and tested offline (11
+tests); not deployed.** The first note here said the fix needed M8. It does not: only the
+person's own namespace has an email in it, and only that part needs to change.
+
+| Change | What it does |
+|---|---|
+| The person's own namespace | `org_robotinc_user_maya_at_robotinc_dot_example`. `@` becomes `_at_`, `.` becomes `_dot_`, `_` is doubled, and any other character is written as `_x<hex>_`. Two different emails never give the same namespace: a test checks the pairs that a simple replace would merge |
+| The grant's key | Unchanged. A grant is still filed under `org_<org>_user_<email>`. That key is never sent to AgentCore, so old grants still work |
+| A refusal by AWS | The tools Lambda now reports it: `{"error": "refused by AWS: AccessDeniedException"}` with 403, `ValidationException` with 400, anything else with 502. Not "An internal error occurred". This also makes the visa's refusal readable on stage |
+
+Not proven: `CreateEvent` accepts the new name as `actorId`, and a search of the new
+namespace returns what was written. To check, after `cdk deploy MemoryVisaAgentCore`:
+
+```bash
+call "$MAYA" whoami '{}'            # expect: static_namespaces has org_robotinc_user_maya_at_robotinc_dot_example
+call "$MAYA" memory_write '{"namespace":"org_robotinc_user_maya_at_robotinc_dot_example","text":"I prefer the weekly export report on Mondays."}'
+# wait a minute for extraction, then:
+call "$MAYA" memory_search '{"query":"export report"}'
+# expect: "failed" is empty, and the new namespace is in "searched"
+call "$LIAM" memory_search '{"namespace":"org_robotinc_user_maya_at_robotinc_dot_example","query":"report"}'   # expect: 403
+```
+
+Anything written to the old `...user_maya@robotinc.example` name is not moved. Nothing
+could read it, so nothing is lost.
 
 **Run 23 November 2026, against the deployed stack:**
 

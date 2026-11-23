@@ -42,9 +42,27 @@ def requester_namespace(claims: UserClaims) -> str:
     return f"org_{claims.org}_user_{claims.email}"
 
 
+_NAMESPACE_SAFE = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
+_ESCAPES = {"_": "__", "@": "_at_", ".": "_dot_"}
+
+
+def namespace_safe(value: str) -> str:
+    """An email as part of a memory namespace. AgentCore allows only letters, digits,
+    "-", "_", "/", "*" and ":" there, so "@" and "." are refused (REVIEW.md, Q4). Every
+    other character is written as an escape that starts with "_", and "_" itself is
+    doubled, so two different emails never give the same namespace."""
+    return "".join(c if c in _NAMESPACE_SAFE else _ESCAPES.get(c, f"_x{ord(c):x}_") for c in value)
+
+
+def user_namespace(claims: UserClaims) -> str:
+    """The person's own memory namespace. `requester_namespace` is different: it is the
+    key a grant is filed under, never sent to AgentCore, and it keeps the plain email."""
+    return f"org_{claims.org}_user_{namespace_safe(claims.email)}"
+
+
 def static_namespaces(claims: UserClaims) -> set[str]:
     """Namespaces this identity is allowed into with no grant involved."""
-    namespaces = {requester_namespace(claims)}
+    namespaces = {user_namespace(claims)}
     namespaces |= {f"org_{claims.org}_dept_{d}" for d in claims.departments}
     namespaces |= {f"org_{claims.org}_proj_{p}" for p in claims.projects}
     return namespaces

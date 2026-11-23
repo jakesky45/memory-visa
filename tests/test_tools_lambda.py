@@ -118,7 +118,7 @@ def test_a_grant_never_writes(tools):
 
 def test_a_member_writes_to_their_own_and_their_departments_namespace(tools):
     assert call(tools, "memory_write", MAYA, namespace="org_robotinc_dept_engineering", text="note")[0] == 200
-    assert call(tools, "memory_write", MAYA, namespace="org_robotinc_user_maya@robotinc.example", text="note")[0] == 200
+    assert call(tools, "memory_write", MAYA, namespace="org_robotinc_user_maya_at_robotinc_dot_example", text="note")[0] == 200
     assert call(tools, "memory_write", MAYA, namespace="org_robotinc_dept_finance", text="note")[0] == 403
 
 
@@ -192,3 +192,23 @@ def test_memory_search_with_no_namespace_searches_what_the_caller_may_read(tools
     assert status == 200
     assert LEGAL not in body["searched"] and "org_robotinc_published" in body["searched"]
     assert [r["text"] for r in body["records"]] == ["The X-7 is classified 7A994."]
+
+
+def test_a_refusal_by_aws_is_reported_as_one_not_as_an_internal_error(tools):
+    """Q4, and the visa on stage: when AWS says no, the caller sees that AWS said no."""
+    from botocore.exceptions import ClientError
+
+    def refuse(namespace, query):
+        raise ClientError({"Error": {"Code": "AccessDeniedException", "Message": "no"}}, "RetrieveMemoryRecords")
+
+    tools.backend.retrieve = refuse
+    status, body = call(tools, "memory_search", MAYA, namespace="org_robotinc_dept_engineering", query="x")
+    assert status == 403 and body == {"error": "refused by AWS: AccessDeniedException", "aws_error": "AccessDeniedException"}
+
+
+def test_whoami_names_a_user_namespace_agentcore_accepts(tools):
+    import re
+
+    pattern = re.compile(r"[a-zA-Z0-9/*][a-zA-Z0-9-_/*]*(?::[a-zA-Z0-9-_/*]+)*[a-zA-Z0-9-_/*]*")
+    for namespace in call(tools, "whoami", MAYA)[1]["memory"]["static_namespaces"]:
+        assert pattern.fullmatch(namespace), namespace

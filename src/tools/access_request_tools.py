@@ -48,6 +48,7 @@ import json
 import os
 
 import boto3
+from botocore.exceptions import ClientError
 
 from agents.access_requests import (
     InvalidRequestError,
@@ -347,5 +348,11 @@ def handler(event, context):
         return {"statusCode": 403, "body": json.dumps({"error": str(exc)})}
     except GrantNotFoundError as exc:
         return {"statusCode": 404, "body": json.dumps({"error": f"no such grant: {exc}"})}
+    except ClientError as exc:
+        # AWS itself said no. Say so, with its own error code, and not "internal error".
+        # AccessDenied here is the visa at work: outside its namespace, or past its end.
+        code = exc.response.get("Error", {}).get("Code", "ClientError")
+        status = 403 if code.startswith("AccessDenied") else 400 if code == "ValidationException" else 502
+        return {"statusCode": status, "body": json.dumps({"error": f"refused by AWS: {code}", "aws_error": code})}
 
     return {"statusCode": 200, "body": json.dumps(result)}
