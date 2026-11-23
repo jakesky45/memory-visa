@@ -581,6 +581,8 @@
 
     <p>The gate holds now - it didn't always. Robotinc has one real department-scoped tool behind the Gateway, <code>check_shipping_classification</code>, and a Cedar policy was meant to gate it by the caller's department. For a while it couldn't: the Gateway validates Cognito access tokens, and access tokens carry no custom attributes by default, so <code>principal.hasTag("department")</code> was never true. Making the policy active denied everyone, Maya included. The fix was a small Cognito pre-token-generation trigger that copies the caller's own <code>org</code> and <code>department</code> attributes into their access token, so AgentCore has something to turn into a tag. Deployed and proven live: Maya, engineering, still gets the stub answer; Liam, legal, is refused by the policy engine itself, not by this project's own code. <code>whoami</code> reports which mode it's in.</p>
 
+    <p>One thing not to read into that. The gate looks at department and nothing else, so a grant doesn't open it: Jordan can hold a grant that carries Engineering's tools in this project's own model, and the Gateway will still refuse him <code>check_shipping_classification</code>, because his token has no department at all. The two aren't joined up yet.</p>
+
     <h2 id="maya-gets-her-fact">Maya Gets Her Fact</h2>
 
     <p>Memory access is the thing a grant actually opens, so it is worth showing working and not just asserted. (Two setup details cost time and are worth knowing: the role AgentCore Memory uses for extraction needs permission to invoke a Bedrock model, or every search comes back empty with no error; and the strategy's namespace template must match the namespace you search, here <code>{actorId}</code>.)</p>
@@ -911,9 +913,7 @@ grant_activity as Priya (neither):
           ]
         },
         <span class="ok">"domain_tools": ["check_shipping_classification", "generate_packaging_manifest", "query_firmware_specs"],</span>
-        "live_gateway_tools": {
-          "EngineeringTools___check_shipping_classification": "Engineering only - a Cedar policy refuses any caller whose access token has no department claim equal to 'engineering'"
-        }
+        "live_gateway_tools": { ... }
       }</pre>
     </div>
 
@@ -933,15 +933,13 @@ grant_activity as Priya (neither):
         "department": null,
         "memory": {"static_namespaces": ["org_robotinc_user_jordan_at_contractor_dot_example"], "published_namespace": "org_robotinc_published", "granted_namespaces": []},
         <span class="err">"domain_tools": [],</span>
-        "live_gateway_tools": {
-          "EngineeringTools___check_shipping_classification": "Engineering only - a Cedar policy refuses any caller whose access token has no department claim equal to 'engineering'"
-        }
+        "live_gateway_tools": { ... }
       }</pre>
     </div>
 
     <p>Nothing was re-issued and nobody signed in again. The three Engineering tools and the Memory namespace went away together when the window closed, because <code>allowed_tools()</code> and <code>GuardedMemory</code> read the same grant.</p>
 
-    <p>The last field is there because <code>whoami</code> first claimed the one real Gateway tool was department-gated, as the policy intended. Checking that against real traffic showed the gate does not hold, so <code>whoami</code> now reports what is true.</p>
+    <p>The last field, trimmed here, is <code>whoami</code> being honest about the one real Gateway tool. When these were captured it said the department gate blocked nobody. Today it says "Engineering only", because today that's true.</p>
 
     <h2 id="what-agentcore-ships">Why Not AgentCore's Own Time-Aware Policies?</h2>
 
@@ -965,7 +963,7 @@ grant_activity as Priya (neither):
 
     <p>So Dogwood could sit in front of a crossing as a second gate - "no read unless this caller's grant was checked first". It isn't in this build, for three reasons. The window is fixed in the policy text rather than taken from the grant, so it's less exact than the deadline IAM enforces. It can't see a revocation, because that happens in the owner's session. And the moment a policy engine holds one such policy, every request to the Gateway has to carry a session ID header, or it fails.</p>
 
-    <p>That is why the grant lives in its own table, not in Cedar. The static department gate is a different story now: it holds one baseline <code>permit</code> for the tools, and - since the access token carries the caller's department claim - a second policy that actually refuses a non-Engineering caller at the Gateway, before any of this project's own code runs. The grant itself is still checked in the tools Lambda, and the read it allows is then enforced by IAM: Cedar decides who may try a tool at all, the tools Lambda decides who may cross a boundary, and IAM decides how long a crossing lasts.</p>
+    <p>That is why the grant lives in its own table, not in Cedar. The static department gate is a different story now: it holds one baseline <code>permit</code> for the tools, and - since the access token carries the caller's department claim - a second policy that actually refuses a non-Engineering caller at the Gateway, before any of this project's own code runs. The grant itself is still checked in the tools Lambda, and the read it allows is then enforced by IAM: Cedar decides who may try a tool at all, the tools Lambda decides who may cross a boundary, and IAM holds each crossing to one namespace and one deadline.</p>
 
     <h2 id="rules">The Rules It Follows</h2>
 

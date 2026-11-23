@@ -95,6 +95,17 @@ either permitted everything or was LOG_ONLY.
 When it passes: the blog's "One honest gap" paragraph becomes "the gate holds", the rule
 "say what does not hold" needs a new example, and Cedar has a real job in the talk.
 
+**Review of the N10 run (Claude).** The run is sound: the claims are in the token, the
+policy refused Liam by name (`StaticDomainGating`), and memory access was not affected.
+Three things in the blog changes that came with it:
+
+| # | Severity | Finding | State |
+|---|---|---|---|
+| Y1 | Medium | **Jordan's two `whoami` transcripts were edited** to show today's "Engineering only" text. They were captured before the gate was switched on, when the field said something else. This is E1 again | Fixed. The field is trimmed to `{ ... }` in both, and the paragraph under them says what it said then and what it says now |
+| Y2 | Medium | **A grant's tools and the real Gateway tool now disagree in plain sight.** Jordan's `whoami` lists `check_shipping_classification` among the tools his grant carries, and the Gateway refuses him that tool, because the gate looks at department only | Said in the post, in "What a Grant Unlocks". **Not fixed in the design.** To join them, the policy would have to know about grants, which is the Dogwood question again |
+| Y3 | Low | "IAM decides how long a crossing lasts" left out the namespace | Fixed |
+| Y4 | Low | The cost of the Essentials plan was not looked up | **Open, Jake**, if this stays deployed |
+
 ### Tenth review: the whole blog, read end to end
 
 23 November 2026, at `ba07194`. About 6,800 words in 22 sections. Each finding is fixed
@@ -372,7 +383,7 @@ not need one.
 | 8c | Claude | ~~Blog: open the AWS Security Blog post in a browser and check the two claims about it (R9)~~ **Done, 23 November 2026** | "Sixth review" |
 | 8d | Claude | ~~Capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10)~~ **Done, 23 November 2026** | "Sixth review" |
 | 8e | Jake | Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
-| 8f | Jake | Deploy N10 and run its five checks, then deploy again with `-c departmentGate=active` | "N10: the department gate" |
+| 8f | Claude | ~~Deploy N10 and run its five checks, then deploy again with `-c departmentGate=active`~~ **Done, 23 November 2026: the gate is active and proven** | "N10: the department gate" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
@@ -1095,7 +1106,7 @@ In this order. Each is one change with its own tests.
 | N7 | Search across every namespace the caller may read | M7 | **Done, deployed and proven live** (7 tests). Found Q4 (a user's own namespace can't be read - M8) along the way. See "N7: one search across what you may read" |
 | N8 | One more sharing pattern: a published fact | Scale, S6 | **Done, deployed and proven live** (14 tests). Found and fixed a real SDK-version bug along the way (P5). Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
-| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | **Written and tested offline** (5 tests, and the stack synthesizes in both modes). Not deployed. See "N10: the department gate" |
+| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | **Done, deployed and proven live** (5 tests). Maya allowed, Liam refused by the policy engine. See "N10: the department gate" |
 
 ### The blog
 
