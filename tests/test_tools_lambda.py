@@ -212,3 +212,11 @@ def test_whoami_names_a_user_namespace_agentcore_accepts(tools):
     pattern = re.compile(r"[a-zA-Z0-9/*][a-zA-Z0-9-_/*]*(?::[a-zA-Z0-9-_/*]+)*[a-zA-Z0-9-_/*]*")
     for namespace in call(tools, "whoami", MAYA)[1]["memory"]["static_namespaces"]:
         assert pattern.fullmatch(namespace), namespace
+
+
+def test_whoami_says_whether_the_department_gate_is_enforced(tools, monkeypatch):
+    """Say what does not hold: whoami reports the gate as it is deployed, not as intended."""
+    tool = "EngineeringTools___check_shipping_classification"
+    assert "blocks nobody" in call(tools, "whoami", MAYA)[1]["live_gateway_tools"][tool]
+    monkeypatch.setattr(tools, "_DEPARTMENT_GATE", "ACTIVE")
+    assert "Engineering only" in call(tools, "whoami", MAYA)[1]["live_gateway_tools"][tool]

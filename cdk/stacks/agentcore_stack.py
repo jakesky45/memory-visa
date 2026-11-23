@@ -129,12 +129,31 @@ class AgentCoreStack(Stack):
                 "org": cognito.StringAttribute(mutable=True),
             },
             self_sign_up_enabled=False,
+            # Changing an access token needs the Essentials plan or higher (N10).
+            feature_plan=cognito.FeaturePlan.ESSENTIALS,
             # CDK's UserPool defaults to RETAIN on delete - missed this
             # earlier, and it's why roughly nine orphaned "memory-visa" pools
             # accumulated over this session's many full-stack delete/recreate
             # cycles. DESTROY matches every other resource in this demo stack.
             removal_policy=RemovalPolicy.DESTROY,
         )
+        # N10: put org and department into the ACCESS token, so Cedar can see them as
+        # tags on the principal (src/tools/token_claims.py). V2 is the first trigger
+        # version that can change an access token.
+        self.token_claims_fn = lambda_.Function(
+            self,
+            "TokenClaims",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="token_claims.handler",
+            code=lambda_.Code.from_asset("../src/tools"),
+            timeout=Duration.seconds(5),
+        )
+        self.user_pool.add_trigger(
+            cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
+            self.token_claims_fn,
+            cognito.LambdaVersion.V2_0,
+        )
+
         # client_credentials can't use identity scopes (profile/email/openid,
         # the client-less default) - it needs a custom resource-server scope.
         self.resource_server = self.user_pool.add_resource_server(
@@ -670,6 +689,7 @@ class AgentCoreStack(Stack):
         self.access_request_tools_target.node.add_dependency(self.gateway)
         self.access_request_tools_target.node.add_dependency(self.gateway_role)
 
+        department_gate = "ACTIVE" if self.node.try_get_context("departmentGate") == "active" else "LOG_ONLY"
         self.static_domain_policy = agentcore.CfnPolicy(
             self,
             "StaticDomainPolicy",
@@ -689,7 +709,10 @@ class AgentCoreStack(Stack):
             # always false, so this forbid's "unless" branch can never fire - LOG_ONLY
             # was masking a policy that was never actually enforceable as written, not a
             # validated one waiting to be promoted. See docs/index.html.
-            enforcement_mode="LOG_ONLY",
+            # N10: the claims are now put into the access token (token_claims.py), so the
+            # rule can be true. It stays LOG_ONLY until that is proven live; then:
+            #   cdk deploy MemoryVisaAgentCore -c departmentGate=active
+            enforcement_mode=department_gate,
             validation_mode="FAIL_ON_ANY_FINDINGS",
             description="Denies Engineering-only tools to anyone without the engineering department claim",
         )
@@ -882,6 +905,7 @@ class AgentCoreStack(Stack):
         self.access_request_tools_fn.add_environment("VISA_ROLE_ARN", self.visa_role.role_arn)
         self.access_request_tools_fn.add_environment("GUARDRAIL_ID", guardrail_id)
         self.access_request_tools_fn.add_environment("GUARDRAIL_VERSION", "DRAFT")
+        self.access_request_tools_fn.add_environment("DEPARTMENT_GATE", department_gate)
         self.access_request_tools_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["bedrock-agentcore:CreateEvent"],

@@ -579,7 +579,7 @@
 
     <p><code>allowed_tools()</code> computes this from the same claims and the same grant store as every other check in this post. The tests assert it, and a live <code>whoami</code> call (below) shows Jordan gaining Engineering's three tools when his grant opened and losing them when it closed.</p>
 
-    <p>One honest gap. Robotinc has one real department-scoped tool behind the Gateway, <code>check_shipping_classification</code>, and a Cedar policy was meant to gate it by the caller's department. It cannot. The Gateway validates Cognito access tokens, and access tokens carry no custom attributes, so <code>principal.hasTag("department")</code> is never true. Making the policy active denied everyone, Maya included. It stays in <code>LOG_ONLY</code>, and <code>whoami</code> reports it that way. The fix is to put the claims into the access token, and it is not done yet.</p>
+    <p>One honest gap. Robotinc has one real department-scoped tool behind the Gateway, <code>check_shipping_classification</code>, and a Cedar policy was meant to gate it by the caller's department. It cannot. The Gateway validates Cognito access tokens, and access tokens carry no custom attributes, so <code>principal.hasTag("department")</code> is never true. Making the policy active denied everyone, Maya included. It stays in <code>LOG_ONLY</code>, and <code>whoami</code> reports it that way. The fix is to put the claims into the access token. That is written - a small Cognito trigger - and the gate stays in <code>LOG_ONLY</code> until it has been proven live.</p>
 
     <h2 id="maya-gets-her-fact">Maya Gets Her Fact</h2>
 

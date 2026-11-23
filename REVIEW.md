@@ -40,6 +40,70 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 
 The three live checks above are done (T3, T4, S12) - see each row for the result.
 
+### N10: the department gate
+
+23 November 2026. Jake, on the blog's "One honest gap": "what are we doing?" We fix it.
+Written and tested offline; not deployed.
+
+**The gap.** A Cedar policy is meant to keep `check_shipping_classification` for
+Engineering. It tests `principal.hasTag("department")`. The Gateway only sees access
+tokens, a Cognito access token carries no custom attributes, so the test was never true and
+making the policy active refused everyone.
+
+**The fix.** AWS: "OAuth principals support tags that contain JWT claims". So the claims
+must be in the access token.
+
+| Change | What it does |
+|---|---|
+| `src/tools/token_claims.py` | A Cognito pre-token-generation trigger (version 2). It copies `custom:org` and `custom:department` into the access token as `org` and `department`. The values are the user's own attributes, which only an administrator sets |
+| The user pool | The trigger is attached, and the plan is set to Essentials, which AWS requires for changing an access token |
+| The Cedar policy | `LOG_ONLY` by default, `ACTIVE` with `-c departmentGate=active`. Two steps on purpose: prove the claims arrive, then enforce |
+| `whoami` | Says "Engineering only" when the gate is active, and "blocks nobody" when it is not |
+
+**Not proven**
+
+| # | Not proven | If it fails |
+|---|---|---|
+| G1 | AgentCore turns a claim that Cognito added (`department`) into a tag the policy can read. The AWS page names "username, scope, role, etc." | If Maya is refused in step 5, the claim is not a tag. Send me the decoded token and the refusal |
+| G2 | The Essentials plan is accepted on this pool, and what it costs. New pools usually have it already | The deploy says so |
+| G3 | The trigger's answer shape is right for version 2 | Step 2 shows no `department` in the token |
+
+**To deploy and check**
+
+```bash
+make eval                                    # expect: 118 passed
+cd cdk && cdk diff MemoryVisaAgentCore       # expect: one new Lambda, the pool's trigger and plan, one new environment variable. The policy stays LOG_ONLY
+cdk deploy MemoryVisaAgentCore && cd ..
+
+# 1. New tokens. The old ones were issued before the trigger.
+MAYA=$(token maya); LIAM=$(token liam)
+
+# 2. Is the claim in the access token?
+printf '%s' "$MAYA" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{department, org, scope, client_id}'
+# expect: "department": "engineering", "org": "robotinc"
+
+# 3. Still LOG_ONLY: both may call the tool
+eng() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"EngineeringTools___check_shipping_classification","arguments":{"shipment":"X-7"}}}' \
+  | sed -n 's/^data: //p' | jq -c '.result.content[0].text // .error'; }
+eng "$MAYA"; eng "$LIAM"                      # expect: both get the stub answer
+
+# 4. Enforce it
+cd cdk && cdk deploy MemoryVisaAgentCore -c departmentGate=active && cd ..
+
+# 5. The gate
+eng "$MAYA"                                   # expect: the stub answer
+eng "$LIAM"                                   # expect: refused by the policy engine
+call "$MAYA" whoami '{}' | jq -r '.content[0].text' | jq '.body | fromjson | .live_gateway_tools'   # expect: "Engineering only ..."
+```
+
+If step 5 refuses Maya too, go back with `cdk deploy MemoryVisaAgentCore` (no context
+value) and send me the output of step 2.
+
+When it passes: the blog's "One honest gap" paragraph becomes "the gate holds", the rule
+"say what does not hold" needs a new example, and Cedar has a real job in the talk.
+
 ### Tenth review: the whole blog, read end to end
 
 23 November 2026, at `ba07194`. About 6,800 words in 22 sections. Each finding is fixed
@@ -317,6 +381,7 @@ not need one.
 | 8c | Claude | ~~Blog: open the AWS Security Blog post in a browser and check the two claims about it (R9)~~ **Done, 23 November 2026** | "Sixth review" |
 | 8d | Claude | ~~Capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10)~~ **Done, 23 November 2026** | "Sixth review" |
 | 8e | Jake | Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
+| 8f | Jake | Deploy N10 and run its five checks, then deploy again with `-c departmentGate=active` | "N10: the department gate" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
@@ -1039,7 +1104,7 @@ In this order. Each is one change with its own tests.
 | N7 | Search across every namespace the caller may read | M7 | **Done, deployed and proven live** (7 tests). Found Q4 (a user's own namespace can't be read - M8) along the way. See "N7: one search across what you may read" |
 | N8 | One more sharing pattern: a published fact | Scale, S6 | **Done, deployed and proven live** (14 tests). Found and fixed a real SDK-version bug along the way (P5). Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
-| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | To do. Would also carry projects (S6) |
+| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | **Written and tested offline** (5 tests, and the stack synthesizes in both modes). Not deployed. See "N10: the department gate" |
 
 ### The blog
 

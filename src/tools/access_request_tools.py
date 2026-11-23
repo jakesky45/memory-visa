@@ -85,6 +85,7 @@ _VISA_ROLE_ARN = os.environ.get("VISA_ROLE_ARN", "")
 _GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "")
 _GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "DRAFT")
 _MEMORY_STRATEGY_ID = os.environ.get("MEMORY_STRATEGY_ID") or None
+_DEPARTMENT_GATE = os.environ.get("DEPARTMENT_GATE", "LOG_ONLY")
 
 _grants = DynamoGrantStore(_GRANTS_TABLE, _GRANTS_AUDIT_TABLE, region=_REGION)
 _bedrock_runtime = boto3.client("bedrock-runtime", region_name=_REGION) if _GUARDRAIL_ID else None
@@ -204,13 +205,17 @@ def _revoke_access(args: dict) -> dict:
 # namespaces, domain_tools) is computed live from the same
 # GrantStore/allowed_tools() the rest of the project already proves.
 def _live_gateway_tools() -> dict:
-    return {
-        "EngineeringTools___check_shipping_classification": (
-            "callable by anyone right now - its gating policy is LOG_ONLY, not ACTIVE, "
-            "and would deny everyone (not just other departments) if promoted, since "
-            "the department tag it checks is never visible to Cedar on this auth path"
-        ),
-    }
+    if _DEPARTMENT_GATE == "ACTIVE":
+        state = (
+            "Engineering only - a Cedar policy refuses any caller whose access token has no "
+            "department claim equal to 'engineering'"
+        )
+    else:
+        state = (
+            "callable by anyone right now - its Cedar department policy is LOG_ONLY, not ACTIVE. "
+            "It logs what it would decide and blocks nobody"
+        )
+    return {"EngineeringTools___check_shipping_classification": state}
 
 
 def _whoami(args: dict) -> dict:
