@@ -53,9 +53,11 @@ not need one.
 | 3 | Jake | Unblock a model. Ask the Organization's administrator for a policy exception and for access to Claude Opus 5.5 or Sonnet 5.5 in `eu-west-2`. If that will take more than a few days, use a personal AWS account for the demo | U2/U3 |
 | 4 | Jake | Meanwhile, prove the agent with an API key: `demo/agent_chat.py --provider anthropic`, runbook steps 3 and 4 | "Stage 3: the agent" |
 | 5 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
-| 6 | Claude | ~~Provenance on results, and reads in the audit table (N2)~~ **Written.** Jake: deploy and run the check | "N2: provenance and the audit trail" |
-| 7 | Claude | ~~Published facts, the second way to share (N8)~~ **Written.** Jake: deploy and run the check | "N8: published facts" |
-| 8 | Claude | ~~Search across every namespace the caller may read (N7)~~ **Written.** Jake: deploy and run the check | "N7: one search across what you may read" |
+| 6 | Claude | ~~Provenance on results, and reads in the audit table (N2)~~ **Done, deployed and proven live** | "N2: provenance and the audit trail" |
+| 7 | Claude | ~~Published facts, the second way to share (N8)~~ **Done, deployed and proven live** | "N8: published facts" |
+| 8 | Jake | Search across every namespace the caller may read (N7): written and tested offline. Deploy it and run the check | "N7: one search across what you may read" |
+| 8a | Jake | Stop GitHub serving the old commits that hold the account and policy IDs: ask GitHub Support to remove them, or delete the repository and push it again. Then delete `/tmp/memory-visa-before-scrub.bundle` on the first machine | U9 |
+| 8b | Jake | Say if you want the proof that IAM refuses a direct record write outside a published namespace (P6). Claude writes the script | "N7: one search across what you may read" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
