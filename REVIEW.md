@@ -262,7 +262,7 @@ column says otherwise.
 |---|---|---|---|
 | R7 | Medium | **Jordan's `whoami` transcript is older than the namespace fix.** It shows `org_robotinc_user_jordan@contractor.example` and no published namespace | Fixed by saying when it was captured and what differs today. Replace it with a new capture when you next run it |
 | R8 | Low | **"shared by default stays isolated by default"** did not mean anything | Fixed |
-| R9 | Medium | **The AWS Security Blog claim is still not checked** ("three days before", "the exact same primitive") | **Open, Jake.** I cannot read that page |
+| R9 | Medium | **The AWS Security Blog claim is still not checked** ("three days before", "the exact same primitive") | **Checked, 23 November 2026, in a browser (WebFetch still only returns that page's navigation, not its body).** "By Meriem SMACHE, Charline Boulie, Christian Kamwangala, and Lior Perez on 17 NOV 2026." "The exact same primitive" holds precisely: the post's Pattern B names a "REQUEST interceptor for Lambda... extracts the verified user identity claims from the validated token" as a distinct step before "Perimeter authorization (AgentCore Policy): AgentCore Gateway uses a deterministic Cedar-based policy engine to evaluate each request... before allowing tool access" - identity extraction, then Cedar, same order as this project. "Three days before this post went out" is not independently checkable: this post states no publish date of its own anywhere in its text, so there is nothing to subtract 17 November from. If a specific date is wanted for the claim, it has to come from when this post was actually published, not from this review |
 | R10 | Low | The new sections show shortened run records, not raw JSON | **Open, Jake**, at the next live run |
 
 **Ease of use**
@@ -293,7 +293,8 @@ not need one.
 | 8 | Claude | ~~Deploy the fix for Q4 (a person's own namespace) and run the check~~ **Done, deployed and proven live** | "N7: one search across what you may read" |
 | 8a | Jake | Stop GitHub serving the old commits that hold the account and policy IDs: ask GitHub Support to remove them, or delete the repository and push it again. Then delete `/tmp/memory-visa-before-scrub.bundle` on the first machine | U9 |
 | 8b | Claude | ~~Run the proof that IAM refuses a direct record write outside a published namespace (P6)~~ **Done, 23 November 2026.** See below | `demo/publish_boundary_demo.py` |
-| 8c | Jake | Blog: open the AWS Security Blog post in a browser and check the two claims about it (R9). At the next live run, capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10). Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
+| 8c | Claude | ~~Blog: open the AWS Security Blog post in a browser and check the two claims about it (R9)~~ **Done, 23 November 2026** | "Sixth review" |
+| 8d | Jake | At the next live run, capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10). Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
