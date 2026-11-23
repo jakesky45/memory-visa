@@ -136,8 +136,8 @@ def test_a_read_under_a_grant_is_scoped_to_the_grant():
     backend = ScopedFakeBackend()
     memory = GuardedMemory(backend, fake_apply_guardrail, grants)
     maya = UserClaims(email="maya@robotinc.example", org="robotinc", departments=("engineering",))
-    liam = UserClaims(email="liam@robotinc.example", org="robotinc", departments=("legal",))
-    memory.put(liam, LEGAL, "Export control 7A994 blocks Supplier X for battery cells.", T0)
+    oleg = UserClaims(email="oleg@robotinc.example", org="robotinc", departments=("legal",))
+    memory.put(oleg, LEGAL, "Export control 7A994 blocks Supplier X for battery cells.", T0)
 
     grants.request(
         Grant(
@@ -150,7 +150,7 @@ def test_a_read_under_a_grant_is_scoped_to_the_grant():
         )
     )
     t_approved = T0 + dt.timedelta(minutes=5)
-    grants.approve("g-1", approved_by="liam@robotinc.example", now=t_approved)
+    grants.approve("g-1", approved_by="oleg@robotinc.example", now=t_approved)
 
     results = memory.retrieve(maya, LEGAL, "export control", t_approved + dt.timedelta(minutes=30))
 
@@ -168,9 +168,9 @@ def test_a_read_under_a_grant_is_scoped_to_the_grant():
 def test_a_read_of_your_own_namespace_gets_a_short_window_and_no_grant():
     backend = ScopedFakeBackend()
     memory = GuardedMemory(backend, fake_apply_guardrail, GrantStore())
-    liam = UserClaims(email="liam@robotinc.example", org="robotinc", departments=("legal",))
+    oleg = UserClaims(email="oleg@robotinc.example", org="robotinc", departments=("legal",))
 
-    memory.retrieve(liam, LEGAL, "anything", T0)
+    memory.retrieve(oleg, LEGAL, "anything", T0)
 
     assert backend.scoped_reads[0]["grant_id"] is None
     assert backend.scoped_reads[0]["not_after"] == T0 + DEFAULT_STATIC_WINDOW

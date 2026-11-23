@@ -74,7 +74,7 @@ def a_grant(grant_id: str = "g-1", hours: float = 2, include_tools: bool = False
 
 def test_a_grant_survives_the_round_trip_to_the_table(store):
     store.request(a_grant(include_tools=True))
-    store.approve("g-1", "liam@robotinc.example", T0 + dt.timedelta(minutes=5))
+    store.approve("g-1", "oleg@robotinc.example", T0 + dt.timedelta(minutes=5))
 
     grant = store.get("g-1")
     assert grant.status == GrantStatus.APPROVED
@@ -94,7 +94,7 @@ def test_the_lifecycle_and_its_audit_trail(store):
     assert [g.grant_id for g in store.pending()] == ["g-1"]
     assert store.active_grants_for(MAYA_NS, T0) == []
 
-    store.approve("g-1", "liam@robotinc.example", T0 + dt.timedelta(minutes=5))
+    store.approve("g-1", "oleg@robotinc.example", T0 + dt.timedelta(minutes=5))
     assert store.pending() == []
     assert [g.grant_id for g in store.active_grants_for(MAYA_NS, T0 + dt.timedelta(hours=1))] == ["g-1"]
     assert store.active_grants_for("org_robotinc_user_someone-else@robotinc.example", T0 + dt.timedelta(hours=1)) == []
@@ -109,26 +109,26 @@ def test_the_lifecycle_and_its_audit_trail(store):
 
 def test_a_finished_grant_cannot_be_decided_again(store):
     store.request(a_grant("g-denied"))
-    store.deny("g-denied", "liam@robotinc.example", T0)
+    store.deny("g-denied", "oleg@robotinc.example", T0)
     with pytest.raises(InvalidTransitionError):
-        store.approve("g-denied", "liam@robotinc.example", T0)
+        store.approve("g-denied", "oleg@robotinc.example", T0)
 
     store.request(a_grant("g-expired"))
-    store.approve("g-expired", "liam@robotinc.example", T0)
+    store.approve("g-expired", "oleg@robotinc.example", T0)
     store.active_grants_for(MAYA_NS, T0 + dt.timedelta(hours=3))
     with pytest.raises(InvalidTransitionError):
-        store.approve("g-expired", "liam@robotinc.example", T0 + dt.timedelta(hours=3))
+        store.approve("g-expired", "oleg@robotinc.example", T0 + dt.timedelta(hours=3))
     assert store.active_grants_for(MAYA_NS, T0 + dt.timedelta(hours=3)) == []
 
 
 def test_two_decisions_that_race_cannot_both_win(store):
-    """Liam approves while a second call, which read the grant as pending a moment
+    """Oleg approves while a second call, which read the grant as pending a moment
     earlier, tries to write its own decision. The write is conditional on the status
     that call read, so it fails instead of overwriting the approval."""
     store.request(a_grant())
     stale = store.get("g-1")  # the second call's view: still pending
 
-    store.approve("g-1", "liam@robotinc.example", T0)
+    store.approve("g-1", "oleg@robotinc.example", T0)
 
     stale.status = GrantStatus.DENIED
     with pytest.raises(InvalidTransitionError):
@@ -138,13 +138,13 @@ def test_two_decisions_that_race_cannot_both_win(store):
 
 def test_a_missing_grant_is_reported_as_missing(store):
     with pytest.raises(GrantNotFoundError):
-        store.approve("no-such-grant", "liam@robotinc.example", T0)
+        store.approve("no-such-grant", "oleg@robotinc.example", T0)
 
 
 def test_a_read_goes_to_the_audit_table_beside_the_grants_own_events(store):
     """N2: the owner asks for one grant's trail and sees what was read under it."""
     store.request(a_grant())
-    store.approve("g-1", "liam@robotinc.example", T0 + dt.timedelta(minutes=5))
+    store.approve("g-1", "oleg@robotinc.example", T0 + dt.timedelta(minutes=5))
     store.record_access(
         actor="maya@robotinc.example",
         namespace=LEGAL,

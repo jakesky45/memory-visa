@@ -182,7 +182,7 @@ class AgentCoreStack(Stack):
 
         # A second app client, for real per-user identities. client_credentials
         # tokens represent the app itself, never a specific human - there's no
-        # way to tell Maya's call from Liam's call with one shared token, so
+        # way to tell Maya's call from Oleg's call with one shared token, so
         # the identity fix (see IdentityInterceptor below) needs a flow that
         # actually authenticates a person. Public client (no secret) since
         # USER_PASSWORD_AUTH doesn't need a confidential one.
@@ -205,13 +205,13 @@ class AgentCoreStack(Stack):
         )
 
         # Real people, not just the one shared app-client token - each of
-        # Maya/Liam/Priya gets their own login, so a verified JWT can actually
+        # Maya/Oleg/Priya gets their own login, so a verified JWT can actually
         # say which of them made a call. CfnUserPoolUser can't set a password
         # declaratively; set one with `aws cognito-idp admin-set-user-password
         # --permanent` after deploy.
         for username, email, department in [
             ("maya", "maya@robotinc.example", "engineering"),
-            ("liam", "liam@robotinc.example", "legal"),
+            ("oleg", "oleg@robotinc.example", "legal"),
             ("priya", "priya@robotinc.example", "finance"),
             # Jordan: external contractor, scoped narrower than an employee -
             # no department claim at all, only an org. Same grant workflow,
@@ -468,7 +468,7 @@ class AgentCoreStack(Stack):
 
         # Closes the pull-only gap: fires on every new GrantsTable item and
         # posts to Slack via an Incoming Webhook, instead of leaving it to
-        # Liam to remember to ask. DOMAIN_OWNERS addresses are fictional demo
+        # Oleg to remember to ask. DOMAIN_OWNERS addresses are fictional demo
         # data - the webhook posts to one real demo channel while the
         # Lambda's own logic still resolves and states the real intended
         # owner in the message.

@@ -43,7 +43,7 @@ def test_the_token_is_found_whatever_the_case_of_the_header(name):
 
 
 def test_a_callers_own_verified_fields_never_survive():
-    arguments = _call({"Authorization": "Bearer bad-token"}, {"_verified_email": "liam@robotinc.example"})
+    arguments = _call({"Authorization": "Bearer bad-token"}, {"_verified_email": "oleg@robotinc.example"})
     assert arguments["_verified_email"] is None
 
 

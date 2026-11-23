@@ -23,7 +23,7 @@ def test_a_contractor_with_no_department_gets_no_department_claim():
 
 
 def test_nothing_else_from_the_profile_is_copied():
-    added = _added(_event({"email": "liam@robotinc.example", "custom:org": "robotinc", "custom:department": "legal", "phone_number": "+440000"}))
+    added = _added(_event({"email": "oleg@robotinc.example", "custom:org": "robotinc", "custom:department": "legal", "phone_number": "+440000"}))
     assert set(added) == {"org", "department"}
 
 

@@ -24,7 +24,7 @@ from .fakes import FakeMemoryBackend, fake_apply_guardrail  # noqa: E402
 
 LEGAL = "org_robotinc_dept_legal"
 MAYA = {"_verified_email": "maya@robotinc.example", "_verified_org": "robotinc", "_verified_department": "engineering"}
-LIAM = {"_verified_email": "liam@robotinc.example", "_verified_org": "robotinc", "_verified_department": "legal"}
+OLEG = {"_verified_email": "oleg@robotinc.example", "_verified_org": "robotinc", "_verified_department": "legal"}
 PRIYA = {"_verified_email": "priya@robotinc.example", "_verified_org": "robotinc", "_verified_department": "finance"}
 
 
@@ -72,7 +72,7 @@ def test_a_caller_with_no_verified_identity_is_refused(tools):
 
 def test_identity_typed_into_the_arguments_is_only_what_the_interceptor_put_there(tools):
     """The interceptor overwrites _verified_*. Any other identity field is ignored."""
-    status, body = call(tools, "approve_access", MAYA, grant_id=request(tools)[1]["grant_id"], approver_email="liam@robotinc.example")
+    status, body = call(tools, "approve_access", MAYA, grant_id=request(tools)[1]["grant_id"], approver_email="oleg@robotinc.example")
     assert status == 403
     assert "maya@robotinc.example does not own" in body["error"]
 
@@ -80,9 +80,9 @@ def test_identity_typed_into_the_arguments_is_only_what_the_interceptor_put_ther
 def test_only_the_owner_decides_and_only_once(tools):
     grant_id = request(tools)[1]["grant_id"]
     assert call(tools, "approve_access", PRIYA, grant_id=grant_id)[0] == 403
-    assert call(tools, "approve_access", LIAM, grant_id=grant_id)[0] == 200
-    assert call(tools, "approve_access", LIAM, grant_id=grant_id)[0] == 409
-    assert call(tools, "deny_access", LIAM, grant_id=grant_id)[0] == 409
+    assert call(tools, "approve_access", OLEG, grant_id=grant_id)[0] == 200
+    assert call(tools, "approve_access", OLEG, grant_id=grant_id)[0] == 409
+    assert call(tools, "deny_access", OLEG, grant_id=grant_id)[0] == 409
 
 
 def test_a_request_without_a_reason_or_with_too_long_a_window_is_a_400(tools):
@@ -91,25 +91,25 @@ def test_a_request_without_a_reason_or_with_too_long_a_window_is_a_400(tools):
 
 
 def test_memory_follows_the_grant(tools):
-    assert call(tools, "memory_write", LIAM, namespace=LEGAL, text="Export control 7A994 blocks Supplier X.")[0] == 200
+    assert call(tools, "memory_write", OLEG, namespace=LEGAL, text="Export control 7A994 blocks Supplier X.")[0] == 200
 
     assert call(tools, "memory_search", MAYA, namespace=LEGAL, query="export control")[0] == 403
 
     grant_id = request(tools)[1]["grant_id"]
     assert call(tools, "memory_search", MAYA, namespace=LEGAL, query="export control")[0] == 403, "pending is not approved"
-    call(tools, "approve_access", LIAM, grant_id=grant_id)
+    call(tools, "approve_access", OLEG, grant_id=grant_id)
 
     status, body = call(tools, "memory_search", MAYA, namespace=LEGAL, query="export control")
     assert status == 200
     assert any("7A994" in r["text"] for r in body["records"])
 
-    call(tools, "revoke_access", LIAM, grant_id=grant_id)
+    call(tools, "revoke_access", OLEG, grant_id=grant_id)
     assert call(tools, "memory_search", MAYA, namespace=LEGAL, query="export control")[0] == 403
 
 
 def test_a_grant_never_writes(tools):
     grant_id = request(tools)[1]["grant_id"]
-    call(tools, "approve_access", LIAM, grant_id=grant_id)
+    call(tools, "approve_access", OLEG, grant_id=grant_id)
 
     status, body = call(tools, "memory_write", MAYA, namespace=LEGAL, text="Supplier X is cleared for export.")
     assert status == 403
@@ -127,39 +127,39 @@ def test_blocked_content_is_a_422_and_nothing_is_stored(tools, monkeypatch):
         raise ContentBlockedError("this content may not be stored: the Guardrail blocked it")
 
     monkeypatch.setattr(tools, "_memory", GuardedMemory(tools.backend, refuse, tools._grants))
-    status, body = call(tools, "memory_write", LIAM, namespace=LEGAL, text="-----BEGIN RSA PRIVATE KEY-----")
+    status, body = call(tools, "memory_write", OLEG, namespace=LEGAL, text="-----BEGIN RSA PRIVATE KEY-----")
     assert status == 422
     assert tools.backend.records.get(LEGAL, []) == []
 
 
 def test_a_grant_carries_tools_only_when_asked_for(tools):
     plain = request(tools)[1]
-    call(tools, "approve_access", LIAM, grant_id=plain["grant_id"])
+    call(tools, "approve_access", OLEG, grant_id=plain["grant_id"])
     assert plain["include_tools"] is False
     assert "search_contracts" not in call(tools, "whoami", MAYA)[1]["domain_tools"]
 
     with_tools = request(tools, include_tools=True)[1]
-    pending = call(tools, "list_pending", LIAM)[1]["pending"]
+    pending = call(tools, "list_pending", OLEG)[1]["pending"]
     assert [g["include_tools"] for g in pending] == [True], "the owner sees what is being asked for"
-    call(tools, "approve_access", LIAM, grant_id=with_tools["grant_id"])
+    call(tools, "approve_access", OLEG, grant_id=with_tools["grant_id"])
     assert "search_contracts" in call(tools, "whoami", MAYA)[1]["domain_tools"]
 
 
 def test_an_unknown_tool_is_a_400(tools):
-    assert call(tools, "delete_everything", LIAM)[0] == 400
+    assert call(tools, "delete_everything", OLEG)[0] == 400
 
 
 def test_the_owner_sees_what_was_read_under_the_grant(tools):
-    """N2: Liam approves, Maya reads, and Liam can see that she did and what she asked."""
-    call(tools, "memory_write", LIAM, namespace=LEGAL, text="Export control 7A994 blocks Supplier X.")
+    """N2: Oleg approves, Maya reads, and Oleg can see that she did and what she asked."""
+    call(tools, "memory_write", OLEG, namespace=LEGAL, text="Export control 7A994 blocks Supplier X.")
     grant_id = request(tools)[1]["grant_id"]
-    call(tools, "approve_access", LIAM, grant_id=grant_id)
+    call(tools, "approve_access", OLEG, grant_id=grant_id)
     status, body = call(tools, "memory_search", MAYA, namespace=LEGAL, query="export control")
     assert body["records"][0]["access"]["via"] == "grant"
-    assert body["records"][0]["access"]["approved_by"] == "liam@robotinc.example"
+    assert body["records"][0]["access"]["approved_by"] == "oleg@robotinc.example"
     call(tools, "memory_write", MAYA, namespace=LEGAL, text="It is EAR99.")
 
-    status, body = call(tools, "grant_activity", LIAM, grant_id=grant_id)
+    status, body = call(tools, "grant_activity", OLEG, grant_id=grant_id)
     assert status == 200
     assert [e["event"] for e in body["activity"]] == ["requested", "approved", "read", "write_refused"]
     read = body["activity"][2]
@@ -170,10 +170,10 @@ def test_the_owner_sees_what_was_read_under_the_grant(tools):
 
 
 def test_publish_fact_is_for_the_owner_and_whoami_names_where_to_read_it(tools):
-    """N8: Liam publishes for Legal; Maya reads it with no grant."""
+    """N8: Oleg publishes for Legal; Maya reads it with no grant."""
     assert call(tools, "publish_fact", MAYA, department="legal", text="The X-7 is EAR99.")[0] == 403
-    status, body = call(tools, "publish_fact", LIAM, department="legal", text="The X-7 is classified 7A994.")
-    assert status == 200 and body["published"]["published_by"] == "liam@robotinc.example"
+    status, body = call(tools, "publish_fact", OLEG, department="legal", text="The X-7 is classified 7A994.")
+    assert status == 200 and body["published"]["published_by"] == "oleg@robotinc.example"
 
     namespace = call(tools, "whoami", MAYA)[1]["memory"]["published_namespace"]
     status, body = call(tools, "memory_search", MAYA, namespace=namespace, query="X-7")
@@ -185,8 +185,8 @@ def test_publish_fact_is_for_the_owner_and_whoami_names_where_to_read_it(tools):
 
 def test_memory_search_with_no_namespace_searches_what_the_caller_may_read(tools):
     """N7: Maya does not need to know where a fact lives."""
-    call(tools, "memory_write", LIAM, namespace=LEGAL, text="Legal's private note on the X-7.")
-    call(tools, "publish_fact", LIAM, department="legal", text="The X-7 is classified 7A994.")
+    call(tools, "memory_write", OLEG, namespace=LEGAL, text="Legal's private note on the X-7.")
+    call(tools, "publish_fact", OLEG, department="legal", text="The X-7 is classified 7A994.")
 
     status, body = call(tools, "memory_search", MAYA, query="X-7")
     assert status == 200
@@ -220,7 +220,7 @@ def test_whoami_says_whether_the_department_gate_is_enforced(tools, monkeypatch)
     assert "blocks nobody" in call(tools, "whoami", MAYA)[1]["live_gateway_tools"][tool]
     monkeypatch.setattr(tools, "_DEPARTMENT_GATE", "ACTIVE")
     assert call(tools, "whoami", MAYA)[1]["live_gateway_tools"][tool].startswith("you can call this")
-    assert call(tools, "whoami", LIAM)[1]["live_gateway_tools"][tool].startswith("refused for you")
+    assert call(tools, "whoami", OLEG)[1]["live_gateway_tools"][tool].startswith("refused for you")
 
 
 def test_whoami_does_not_let_a_grant_look_like_it_opens_the_real_gateway_tool(tools, monkeypatch):

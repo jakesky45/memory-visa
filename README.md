@@ -8,7 +8,7 @@ Static isolation keeps two organizations' - or two departments' - AI agents apar
 
 1. Robotinc's departments (Engineering, Legal, Finance) each get their own AgentCore Memory namespace and toolset by default, from the caller's verified Cognito identity.
 2. When someone needs a real exception - Maya (Engineering) needs an export-control fact from Legal's files before a shipment - she calls `request_access` with a reason and a duration.
-3. Legal's real domain owner (Liam) approves or denies it from his own AI client - no bespoke UI, just an MCP tool call he can already make.
+3. Legal's real domain owner (Oleg) approves or denies it from his own AI client - no bespoke UI, just an MCP tool call he can already make.
 4. Within the window, the Memory namespace opens for the requester, to read - never to write. The domain's tools come with it only if the request asked for them and the owner approved that. Past the window, access reverts on its own - no manual cleanup step.
 5. Every transition is audited: who requested, who approved, when it expired. A DynamoDB Streams trigger is wired up to notify both the owner and the requester on each write, once a Slack webhook is configured - it isn't yet.
 6. A sixth tool, `whoami`, reports a caller's own effective access live: static namespaces, any active grant, and the domain toolset that grant carries.
@@ -32,11 +32,11 @@ Deployed in the sandbox account, `eu-west-2`:
 | Resource | Status | Notes |
 |---|---|---|
 | VPC + flow logs | live | |
-| Bedrock Guardrail | deployed, call path confirmed live | every `memory_write` passes it first: a secret is masked, a private key refuses the whole write, and content that cannot be checked is not stored (`src/memory/guardrail.py`). No PII rules - confirmed live, Liam's and Maya's names came back unmasked. The one live write so far was plain text; masking and blocking a real secret are tested offline only, not yet proved against AWS |
+| Bedrock Guardrail | deployed, call path confirmed live | every `memory_write` passes it first: a secret is masked, a private key refuses the whole write, and content that cannot be checked is not stored (`src/memory/guardrail.py`). No PII rules - confirmed live, Oleg's and Maya's names came back unmasked. The one live write so far was plain text; masking and blocking a real secret are tested offline only, not yet proved against AWS |
 | Cognito pool + domain | live | custom `department`/`org` claims, both OAuth flows configured |
 | AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` now `ACTIVE` too (see below) |
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth; `IdentityInterceptor` resolves real Cognito identity before every tool call |
-| EngineeringTools target | `READY`, gate `ACTIVE` | `check_shipping_classification`'s department gate works: a Cognito pre-token-generation trigger (`src/tools/token_claims.py`) puts the caller's own `org`/`department` attributes into the access token, so `hasTag("department")` can be true. Confirmed live, 23 November 2026: Maya (engineering) allowed, Liam (legal) refused by the policy engine itself |
+| EngineeringTools target | `READY`, gate `ACTIVE` | `check_shipping_classification`'s department gate works: a Cognito pre-token-generation trigger (`src/tools/token_claims.py`) puts the caller's own `org`/`department` attributes into the access token, so `hasTag("department")` can be true. Confirmed live, 23 November 2026: Maya (engineering) allowed, Oleg (legal) refused by the policy engine itself |
 | AccessRequestTools target | `READY` | ten MCP tools (`request_access`, `approve_access`, `whoami`, `memory_search`, `memory_write`, `grant_activity`, `publish_fact`, etc.), one Lambda, state in DynamoDB |
 | GrantNotifier | `READY`, not wired up | Lambda + DynamoDB Streams trigger fire on every grant write, but `/memory-visa/slack-webhook-url` was never set - nothing is delivered yet |
 | AgentCore Memory | `ACTIVE` | pool-tenancy, one semantic strategy, 31-day record expiry |
@@ -83,7 +83,7 @@ npx cdk deploy --all --require-approval never -c orchestratorImageDigest=$DIGEST
 cd ..
 ```
 
-The blog's Quickstart goes on from here: sign in as Maya and Liam, run one grant end to end, publish a fact, and run the proof that AWS enforces the visa.
+The blog's Quickstart goes on from here: sign in as Maya and Oleg, run one grant end to end, publish a fact, and run the proof that AWS enforces the visa.
 
 </details>
 
@@ -108,7 +108,7 @@ curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
   | sed -n 's/^data: //p' | jq -r '.result.tools[].name'
 ```
 
-Same for `liam` and `priya` - `CfnUserPoolUser` can't set a password declaratively, so that one step is manual for each.
+Same for `oleg` and `priya` - `CfnUserPoolUser` can't set a password declaratively, so that one step is manual for each.
 
 </details>
 

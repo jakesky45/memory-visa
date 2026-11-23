@@ -12,7 +12,7 @@ from __future__ import annotations
 
 DOMAIN_OWNERS: dict[tuple[str, str], str] = {
     ("robotinc", "engineering"): "maya@robotinc.example",
-    ("robotinc", "legal"): "liam@robotinc.example",
+    ("robotinc", "legal"): "oleg@robotinc.example",
     ("robotinc", "finance"): "priya@robotinc.example",
     ("helios-biotech", "engineering"): "sam@helios.example",
 }

@@ -65,13 +65,13 @@ must be in the access token.
 
 | # | Was not proven | Result |
 |---|---|---|
-| G1 | AgentCore turns a claim that Cognito added (`department`) into a tag the policy can read | **Confirmed.** Decoded Maya's fresh access token directly: `"department": "engineering", "org": "robotinc"`, both present. The policy then refused Liam and allowed Maya on exactly that basis |
+| G1 | AgentCore turns a claim that Cognito added (`department`) into a tag the policy can read | **Confirmed.** Decoded Maya's fresh access token directly: `"department": "engineering", "org": "robotinc"`, both present. The policy then refused Oleg and allowed Maya on exactly that basis |
 | G2 | The Essentials plan is accepted on this pool, and what it costs | **Accepted.** `cdk diff` showed `UserPoolTier: ESSENTIALS` as a plain in-place update, no replacement. Cost not separately measured |
 | G3 | The trigger's answer shape is right for version 2 | **Confirmed** by G1 - the claim would not be in the token otherwise |
 
 Stage 1 (`cdk deploy MemoryVisaAgentCore`, gate still `LOG_ONLY`): `cdk diff` matched the
 prediction exactly - one new Lambda, the pool's trigger and plan, one new environment
-variable, no change to the policy. Fresh tokens for Maya and Liam both decoded with the
+variable, no change to the policy. Fresh tokens for Maya and Oleg both decoded with the
 right claims, and the tool answered 200 for both - LOG_ONLY still blocks nobody.
 
 Stage 2 (`cdk deploy MemoryVisaAgentCore -c departmentGate=active`): `cdk diff` showed
@@ -79,13 +79,13 @@ exactly the two changes expected, nothing else. Then:
 
 ```
 Maya (engineering): 200, the stub answer
-Liam (legal):        -32002 "Tool Execution Denied ... [Policy evaluation denied due to StaticDomainGating-7sh47t_0ls]"
+Oleg (legal):        -32002 "Tool Execution Denied ... [Policy evaluation denied due to StaticDomainGating-7sh47t_0ls]"
 Maya's whoami:       live_gateway_tools.EngineeringTools___check_shipping_classification =
                      "Engineering only - a Cedar policy refuses any caller whose access
                      token has no department claim equal to 'engineering'"
 ```
 
-Regression check: memory access was unaffected - Liam's own `memory_search` still worked,
+Regression check: memory access was unaffected - Oleg's own `memory_search` still worked,
 Maya was still refused on Legal's namespace with no grant. `cdk diff` against the deployed,
 `departmentGate=active` stack shows no differences.
 
@@ -96,7 +96,7 @@ When it passes: the blog's "One honest gap" paragraph becomes "the gate holds", 
 "say what does not hold" needs a new example, and Cedar has a real job in the talk.
 
 **Review of the N10 run (Claude).** The run is sound: the claims are in the token, the
-policy refused Liam by name (`StaticDomainGating`), and memory access was not affected.
+policy refused Oleg by name (`StaticDomainGating`), and memory access was not affected.
 Three things in the blog changes that came with it:
 
 | # | Severity | Finding | State |
@@ -133,13 +133,48 @@ more than they should, and two no longer earn their place.
 | Screenshot | Says | Finding | State |
 |---|---|---|---|
 | `gateway-configuration.jpg` | Interceptor, enforcement on, Cognito sign-in | **It showed the two app client IDs, the user pool ID and the Gateway ID.** None is a secret, but together with the published usernames they are everything needed to try passwords against the live demo: the user client has no secret and allows password sign-in. The ARNs were already blanked | **Fixed.** Those three fields are blanked the same way. The old image is still in the git history |
-| `dynamodb-audit-trail.jpg` | The approval is in the audit table | **The table list showed `payments-ledger-non-prod`**, a table from another project in the same account. Also: the rows are cut off ("liam@roboti..."), and it is from before reads were recorded | **Cropped** to the scan and its two rows. Better: take it again with a grant that has a read in it, columns widened |
+| `dynamodb-audit-trail.jpg` | The approval is in the audit table | **The table list showed `payments-ledger-non-prod`**, a table from another project in the same account. Also: the rows are cut off ("oleg@roboti..."), and it is from before reads were recorded | **Cropped** to the scan and its two rows. Better: take it again with a grant that has a read in it, columns widened |
 | `cognito-users.jpg` | Three real users | It shows three users. There are four: Jordan is a real user and the post says so later | **Open, Jake.** Take it again, or leave it: the caption says "three" |
 | `gateway-observability.jpg` | 38 invocations, a 10.5% error rate | It proves little, it is from the first day, and two banners say "Observability has not been enabled" and "Tracing not enabled", which reads as unfinished | **Open, Jake.** I would drop it |
 | All four | | They are JPEGs, so the text is slightly soft. Each has the mouse pointer over a label. They are light console pages in a dark post | **Open.** PNG, pointer moved away, next time they are taken |
 
 Because the client IDs were public: use strong passwords for the demo users, and destroy the
 stack when you are not showing it.
+
+### Renaming Liam to Oleg
+
+23 November 2026. Jake asked for the Legal persona renamed, full repo and redeploy, not just
+the blog's prose - his email shows up in live-captured JSON, terminal transcripts, a Cognito
+username, and a hardcoded domain-owner mapping.
+
+What changed: every `Liam`/`liam`/`LIAM` across `src/`, `tests/`, `cdk/`, `demo/`, `README.md`
+and this file, renamed to `Oleg`/`oleg`/`OLEG` (119 tests still pass). `domain_owners.py` now
+maps Legal to `oleg@robotinc.example`. `cdk deploy MemoryVisaAgentCore` ran with the same
+context flags as the last deploy (`departmentGate=active`, `visaDemoPrincipalArn=...` - a plain
+`cdk diff` without them would have silently reverted both, caught before deploying, not after)
+and destroyed `UserLiam`/created `UserOleg` in Cognito, exactly as expected. All four demo
+users (`maya`, `oleg`, `priya`, `jordan`) got new strong permanent passwords, closing the loose
+end from "The four screenshots" above.
+
+Every scenario in the blog that involved Liam was re-run live under Oleg rather than just
+find-and-replaced: the full grant lifecycle (403, request, approve, read, write-refused,
+grant_activity as owner and as an uninvolved third party, 403 again after expiry), the
+adversarial identity-binding tests (a third party denying someone else's grant, a requester
+approving their own), `publish_fact`'s ownership check, the cross-namespace fan-out search
+before and after a grant, Jordan's contractor round trip and both his `whoami` answers, and the
+N10 department gate directly on `check_shipping_classification` (Maya through, Oleg refused by
+`StaticDomainGating` itself). `cdk diff` is clean against the deployed stack. One side finding:
+`publish_fact`'s record was not searchable from the very next call - it took on the order of
+ten to twenty seconds to appear, even though it skips model extraction entirely. The blog's
+"searchable straight away" claim is softened to say why (no extraction to wait on, not no
+delay at all) rather than overclaiming instant consistency.
+
+**Not done: the screenshot retakes.** The Chrome extension this session uses wasn't connected,
+so `cognito-users.jpg` (needs four users, Oleg not Liam) and `dynamodb-audit-trail.jpg` (needs
+a run with a read event - the live one captured today, grant `571a399a-...`, has exactly that)
+are still the old images. Their alt text and the surrounding prose already say "Oleg" and
+"four users," which the images themselves do not yet match - reconnect Chrome and retake both,
+and `gateway-observability.jpg` is still 8i's open call to drop or keep.
 
 ### Tenth review: the whole blog, read end to end
 
@@ -157,7 +192,7 @@ unless the last column says otherwise.
 | X7 | Low | The second proof script was not in the Quickstart | Added to step 6 |
 | X8 | Low | "every agent can now see everything"; "the failure this post started with" | Reworded |
 | X9 | Medium | **Two voices.** The original paragraphs are conversational, with " - " asides. The sections added on 23 November were plain and short | **Fixed.** Jake: "I like conversational, so that can bleed into other areas." The six new sections, the five-ways text and the Dogwood paragraphs are rewritten in the post's own voice. The facts are unchanged. Read them once: it is your voice I am imitating |
-| X10 | Medium | **"Maya Gets Her Fact" still showed the first run's JSON**, without provenance, and then explained what a result looks like today | **Fixed.** The old search request and answer are gone. The section shows one real record in today's shape, taken from the live capture in "One Search", and says so. The explaining paragraph is deleted. Liam's write is kept: its answer has not changed shape |
+| X10 | Medium | **"Maya Gets Her Fact" still showed the first run's JSON**, without provenance, and then explained what a result looks like today | **Fixed.** The old search request and answer are gone. The section shows one real record in today's shape, taken from the live capture in "One Search", and says so. The explaining paragraph is deleted. Oleg's write is kept: its answer has not changed shape |
 | X11 | Low | **The title is literal** and does not carry the thesis line (D4) | **Open, Jake.** Your call |
 | X12 | Low | The request-path diagram did not show the interceptor, which the post leans on | **Fixed.** Token check, then request interceptor, then policy engine, then the tools Lambda. The order of the last two is from the AWS page on interceptor types: a request interceptor that returns its own response makes the Gateway "skip policy engine evaluation and the target call". The token check coming first is my reading, not a quote |
 | X13 | - | Length. The post is long, but each section now makes one point and the Quickstart is a third of it | None |
@@ -220,7 +255,7 @@ This is a sketch. It has not been sent to AWS, so the syntax is not proven.
 | Buys | The rule "no crossing without a checked grant" is a declared policy in the policy engine, refused at the Gateway before any of our code runs, and visible in the policy metrics. Cedar gets real work (C1). A new session has no history, so it is refused: the caller choosing the session ID does not weaken a permit of this kind |
 | Does not buy | A second opinion. `check_grant` is our code reading our table, the same as today. The policy enforces the order of two calls, not the truth of the grant |
 | Is worse than the visa at | Time. The window is fixed in the policy text, not taken from the grant. A check one second before the grant ends allows reads for the whole window after it. IAM stops at the grant's exact end |
-| Cannot do | Revocation. Liam's `revoke_access` is in his session, so the policy never sees it. It takes effect at the next `check_grant` |
+| Cannot do | Revocation. Oleg's `revoke_access` is in his session, so the policy never sees it. It takes effect at the next `check_grant` |
 | Costs | The header on every request. A policy change ends open sessions with a 409. Quotas: 20 temporal policies, 3 operators each, 24 hours at most |
 
 So the three layers would each do one job: the table holds the approval, the policy engine
@@ -230,7 +265,7 @@ enforces that it was checked, IAM enforces the namespace and the deadline of the
 the same session ID are isolated on an authenticated Gateway. The examples page says, about
 approvals by more than one person, "correlate on `eventPrincipal`", which only makes sense
 if one session can hold events from more than one principal. If it can, a policy could see
-Liam's `approve_access` directly and the idea above gets much stronger. Only a test settles
+Oleg's `approve_access` directly and the idea above gets much stronger. Only a test settles
 it.
 
 **A spike that would settle it, without touching the main Gateway.** A second small Gateway
@@ -238,7 +273,7 @@ on the same Cognito pool, with its own policy engine, one Lambda and two tools. 
 
 1. Maya checks, then reads, same session: expect allowed.
 2. Maya reads with no check: expect refused.
-3. Liam checks in session X, Maya reads in session X: expect refused, if sessions are per caller. This is the test of the quote in the blog.
+3. Oleg checks in session X, Maya reads in session X: expect refused, if sessions are per caller. This is the test of the quote in the blog.
 4. Maya checks, waits past the window, reads: expect refused.
 
 **Run 23 November 2026, against the sandbox account. All ten checks passed on the first
@@ -272,7 +307,7 @@ gating is the two temporal policies, added separately, after. Changed to
 
 **Check 4 is answered, cleanly: DENY.** User B's `check_grant` event, in session X, is
 invisible to user A's `visa_read_a` request in that same session ID a moment later. (The two
-were the throwaway users `spike-b` and `spike-a`, standing in for Liam and Maya.) Sessions
+were the throwaway users `spike-b` and `spike-a`, standing in for Oleg and Maya.) Sessions
 are isolated per caller, exactly as the AWS session page says - the "correlate on
 `eventPrincipal`" wording on the examples page does not mean what it looked like it might
 mean. **The idea above works as written, and does not get stronger.** Dogwood can enforce "this same caller
@@ -327,7 +362,7 @@ acts as them: an AI client, or the agent in `src/agents/chat_agent.py`.
 |---|---|---|---|
 | H1 | High | **The blog spoke of agents as the owners of memory** ("Engineering's agent learns things Legal's agent will never see") while the code gives everything to people | Fixed. "Why Share Memory" now says memory belongs to people and teams, and an agent is how a person reaches it |
 | H2 | High | **The post did not say which model it uses.** A reader could believe an agent is approved | Fixed. A short section, "The Visa Belongs to a Person" |
-| H3 | High | **"Human-approved" means "approved with Liam's token".** If Liam's own agent holds his token, it can call `approve_access` and the server cannot tell. The agent in this repo is not given the approval tools; a general AI client is | Said in the post. **Not fixed in the design.** See N11 |
+| H3 | High | **"Human-approved" means "approved with Oleg's token".** If Oleg's own agent holds his token, it can call `approve_access` and the server cannot tell. The agent in this repo is not given the approval tools; a general AI client is | Said in the post. **Not fixed in the design.** See N11 |
 | H4 | Medium | **The audit trail names the person, not the client or agent** that made the read | Said in the post. **Not fixed.** See N11 |
 | H5 | Medium | **An agent can misuse a grant its person holds**, for example when steered by text it has read. Read-only, one namespace and a short window limit it | Said in the post. This is a property of delegation, not a bug |
 | H6 | Low | **The brokered answer needs agent identity**, which is why it is not built | Said in the post |
@@ -419,9 +454,9 @@ not need one.
 | 8d | Claude | ~~Capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10)~~ **Done, 23 November 2026** | "Sixth review" |
 | 8e | Jake | Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
 | 8f | Claude | ~~Deploy N10 and run its five checks, then deploy again with `-c departmentGate=active`~~ **Done, 23 November 2026: the gate is active and proven** | "N10: the department gate" |
-| 8g | Jake | `whoami`: deploy (`cdk deploy MemoryVisaAgentCore -c departmentGate=active`; only the tools Lambda changes), then capture Jordan again: request with `include_tools`, Maya approves, `whoami`, wait for the window, `whoami`. Paste both answers over the two transcripts in "What a Caller Actually Gets" and put the `live_gateway_tools` field back. Expected for Jordan: `domain_tools` lists the three Engineering tools while the grant is open, and `live_gateway_tools` says "refused for you ... your department is not set. A grant does not change this" both times. Also run `eng "$JORDAN"` once: expected refused | "Review of the N10 run", Y1 and Y2 |
+| 8g | Claude | ~~`whoami`: capture Jordan again, both before and after the window, with the real `live_gateway_tools` field~~ **Done, 23 November 2026, as a byproduct of the Oleg rename's regression check** | "Renaming Liam to Oleg" |
 | 8h | Jake | Decide Y2: keep the grant's promise of `check_shipping_classification` and let `whoami` explain the refusal (as now), or remove that tool from what a grant carries | "Y2 in plain words" |
-| 8i | Jake | Screenshots: drop or retake the observability one; retake the Cognito users (four) and the audit table (with a read). Make sure the demo users have strong passwords | "The four screenshots" |
+| 8i | Jake | ~~Strong passwords for the demo users~~ **Done, 23 November 2026.** Still open: drop or retake the observability screenshot; retake the Cognito users (four, Oleg not Liam) and the audit table (with a read - today's run has one, grant `571a399a-...`). Needs Chrome reconnected | "The four screenshots", "Renaming Liam to Oleg" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
@@ -500,7 +535,7 @@ Maya searches with no namespace: Legal's published fact (access "published"), se
   [org_robotinc_dept_engineering, org_robotinc_published], failed = [her own namespace,
   ValidationException] - 4.46s
 Maya searches org_robotinc_dept_engineering directly: 200, works as before (0.97s)
-Maya requests Legal, Liam approves (6 minutes)
+Maya requests Legal, Oleg approves (6 minutes)
 Maya searches with no namespace again: five records across org_robotinc_published and
   org_robotinc_dept_legal, ranked by score, Legal's records correctly say access "grant"
   with the grant_id, approver and expiry - 2.41s
@@ -550,7 +585,7 @@ Maya writes to it, waits for extraction, searches it directly by name: 200, the 
   RetrieveMemoryRecords both accept the escaped name
 Maya searches with no namespace: the same fact is in the results, "searched" includes
   her own namespace, and "failed" is empty - Q4 no longer appears there at all
-Liam tries Maya's namespace directly: 403 "no static claim, and no active grant"
+Oleg tries Maya's namespace directly: 403 "no static claim, and no active grant"
 ```
 
 Confirmed, not assumed: `CreateEvent` accepts the escaped name as `actorId`, and a search
@@ -599,7 +634,7 @@ to build; `cdk synth`/`cdk deploy` do that automatically.
 
 ```
 Maya publishes for legal: 403 "does not own domain 'legal' in org 'robotinc'"
-Liam publishes for legal: 200, recordId mem-1f992202-..., published_by liam
+Oleg publishes for legal: 200, recordId mem-1f992202-..., published_by oleg
 Maya's whoami: memory.published_namespace = "org_robotinc_published"
 Maya searches org_robotinc_published, no grant: the fact, word for word, access
   {"via": "published"}, metadata has published_by, department, published_at, and three
@@ -613,7 +648,7 @@ record was found without one), the IAM condition matched cleanly, metadata was o
 result exactly as written, and it was findable immediately, not after a wait.
 
 For the talk: Maya asks the agent about the X-7 and gets Legal's published answer with
-Liam's name on it, with no request and no wait. Then she asks for something Legal has not
+Oleg's name on it, with no request and no wait. Then she asks for something Legal has not
 published, and that is where the visa comes in.
 
 Not built: taking a published fact back or replacing it (M9), project namespaces (S6), and
@@ -640,14 +675,14 @@ the writer and the event ID. Putting the author on the record needs N9.
 code, one new tool, one new Cedar action); `cdk deploy` was clean.
 
 ```
-Liam writes: memory_write -> 200, eventId 0000001795437247409#7102f70e
-Liam searches, no grant: memory_search -> 200, four records, each with record_id,
+Oleg writes: memory_write -> 200, eventId 0000001795437247409#7102f70e
+Oleg searches, no grant: memory_search -> 200, four records, each with record_id,
   created_at, score, strategy_id, namespace, and access {"via": "membership"}
-Maya requests, Liam approves (10 minutes: grant_id 3a440edd-...)
+Maya requests, Oleg approves (10 minutes: grant_id 3a440edd-...)
 Maya searches, under the grant: the same four records, now access {"via": "grant",
-  "grant_id": "3a440edd-...", "approved_by": "liam@robotinc.example", "expires_at": "..."}
+  "grant_id": "3a440edd-...", "approved_by": "oleg@robotinc.example", "expires_at": "..."}
 Maya writes under the grant: 403 "a grant never allows a write"
-grant_activity as Liam (owner): requested, approved, read (Maya's query and all four
+grant_activity as Oleg (owner): requested, approved, read (Maya's query and all four
   record IDs), write_refused - in order, in one call
 grant_activity as Maya (requester): the same four events - both sides of a grant see it
 grant_activity as Priya (neither): 403 "is not the owner of 'legal' and did not request"
@@ -656,7 +691,7 @@ grant_activity as Priya (neither): 403 "is not the owner of 'legal' and did not 
 `memoryRecordId`, `createdAt`, `score` and `memoryStrategyId` are all real fields on a live
 `RetrieveMemoryRecords` answer - confirmed, not assumed.
 
-For the talk this is a fifth beat: Liam asks his own client "what did Maya read under that
+For the talk this is a fifth beat: Oleg asks his own client "what did Maya read under that
 grant?" and gets the answer.
 
 ### Stage 3: the agent
@@ -753,7 +788,7 @@ In the same chat as Maya:
 |---|---|
 | `What has Legal recorded about the X-7?` | A `memory_search` line with status 403, marked REFUSED. The agent says access was refused and does not guess |
 | `Request access to Legal for one hour. Reason: export review for the X-7.` | A `request_access` line with status 200 and a grant ID |
-| In a second terminal, approve as Liam: `call "$LIAM" approve_access '{"grant_id":"<id>"}'` | `"status": "active"` |
+| In a second terminal, approve as Oleg: `call "$OLEG" approve_access '{"grant_id":"<id>"}'` | `"status": "active"` |
 | `Try Legal again.` | A `memory_search` line with status 200, and Legal's fact |
 
 **5. Deploy the agent to the Runtime**
@@ -787,8 +822,8 @@ own AWS SSO session. Actions A1 to A9 all ran; A10 (send me the outputs) is this
 | A2, diff | Matched the expected diff exactly: the visa role, the Lambda's five new environment variables and three new permissions, the runtime role losing memory and table access, the two new tools, the Cedar permit, three new parameters, four regex rules with no PII rules |
 | A4, deploy | `cdk deploy --all`, all three stacks. Clean |
 | A5, image | Built and pushed `linux/arm64`, digest `sha256:4c604185eeea6808c48e2c4794fc53a15d9e0f8cdd4d381b01f02189d6002f7f`, committed in `0091dbf` |
-| A6, write | `memory_write` as Liam: `{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795429942485#5581be4e"}}` |
-| A7, read both ways | `memory_search` as Liam: the fact comes back. As Maya, no grant: `403 "maya@robotinc.example has no access to namespace 'org_robotinc_dept_legal' (no static claim, and no active grant)"` |
+| A6, write | `memory_write` as Oleg: `{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795429942485#5581be4e"}}` |
+| A7, read both ways | `memory_search` as Oleg: the fact comes back. As Maya, no grant: `403 "maya@robotinc.example has no access to namespace 'org_robotinc_dept_legal' (no static claim, and no active grant)"` |
 | A8, the visa proof | `1. org_robotinc_dept_legal ALLOWED: 2 record(s)` / `2. org_robotinc_dept_finance REFUSED by AWS: AccessDeniedException` / `3. org_robotinc_dept_legal REFUSED by AWS: AccessDeniedException` (after the window). Lines 2 and 3 refused: the idea holds |
 | A9, one grant end to end | Request, approve, `memory_search` as Maya succeeds, `memory_write` as Maya refused (`"a grant never allows a write"`), `whoami` shows the granted namespace and its `expires_at`, and after the window closes the same search is refused again |
 
@@ -836,7 +871,7 @@ could have used any of these tools, and the earlier sessions in the blog would n
 **To confirm on the machine that saw it** (one minute, no shell in the way):
 
 ```bash
-curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $LIAM" \
+curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $OLEG" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"AccessRequestTools___whoami","arguments":{}}}' \
   -o /tmp/resp.txt
@@ -949,13 +984,13 @@ USER_POOL_ID=$(aws ssm get-parameter --name /memory-visa/user-pool-id --query Pa
 USER_CLIENT_ID=$(aws ssm get-parameter --name /memory-visa/user-client-id --query Parameter.Value --output text)
 GATEWAY_URL=$(aws ssm get-parameter --name /memory-visa/gateway-url --query Parameter.Value --output text)
 
-for u in maya liam; do
+for u in maya oleg; do
   aws cognito-idp admin-set-user-password --user-pool-id "$USER_POOL_ID" --username $u --password '<password>' --permanent
 done
 
 token() { aws cognito-idp initiate-auth --client-id "$USER_CLIENT_ID" --auth-flow USER_PASSWORD_AUTH \
   --auth-parameters USERNAME=$1,PASSWORD='<password>' --query AuthenticationResult.AccessToken --output text; }
-MAYA=$(token maya); LIAM=$(token liam)
+MAYA=$(token maya); OLEG=$(token oleg)
 
 # call <token> <tool> '<json arguments>'
 call() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" \
@@ -967,13 +1002,13 @@ call() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" \
 **7. Write, then read (A6, A7)**
 
 ```bash
-call "$LIAM" memory_write '{"namespace":"org_robotinc_dept_legal","text":"The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}'
+call "$OLEG" memory_write '{"namespace":"org_robotinc_dept_legal","text":"The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}'
 sleep 90                         # long-term extraction runs in the background
-call "$LIAM" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'
+call "$OLEG" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'
 call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'
 ```
 
-Expected: the write returns an event ID; Liam's search returns the record; Maya's returns a
+Expected: the write returns an event ID; Oleg's search returns the record; Maya's returns a
 403 with "no access to namespace".
 
 If the write or the search fails, read the Lambda's log first:
@@ -1005,8 +1040,8 @@ This is the decision point. If lines 2 and 3 are refused, the idea holds. The ta
 
 ```bash
 call "$MAYA" request_access '{"target_org":"robotinc","target_department":"legal","reason":"Export-control classification for the X-7 before the Q4 shipment.","duration_hours":0.05}'
-call "$LIAM" list_pending '{}'
-call "$LIAM" approve_access '{"grant_id":"<grant_id from the request>"}'
+call "$OLEG" list_pending '{}'
+call "$OLEG" approve_access '{"grant_id":"<grant_id from the request>"}'
 call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # allowed
 call "$MAYA" memory_write '{"namespace":"org_robotinc_dept_legal","text":"Supplier X is cleared."}'   # 403: a grant never writes
 call "$MAYA" whoami '{}'
@@ -1027,7 +1062,7 @@ To stop the billing when you are finished for the day: `cd cdk && npx cdk destro
 |---|---|---|
 | S3 | The Guardrail call is in `src/memory/guardrail.py`. A masked secret is stored masked. Blocked content raises and returns a 422; the refusal message is never stored. No Guardrail, or an intervention with nothing to store, refuses the write | 7 offline tests |
 | S2 | The private-key rule is `BLOCK` again, so the write is refused. A new rule masks `aws_secret_access_key = ...`. The key ID and the Postgres URI are still masked | Read the template. **Deployed in stage 2. Not yet exercised live with an actual secret** |
-| S4, D7 | The PII rules are removed. Shared facts keep their names; secrets are masked or refused | Read the template. **Deployed in stage 2 and confirmed: Liam's and Maya's names came back unmasked in every live call** |
+| S4, D7 | The PII rules are removed. Shared facts keep their names; secrets are masked or refused | Read the template. **Deployed in stage 2 and confirmed: Oleg's and Maya's names came back unmasked in every live call** |
 | S7 | The `memory_write` description says "a namespace the caller is a member of" | Read |
 | D1 | A grant opens memory only. It carries the domain's tools only when the request sets `include_tools` and the owner approves it. The owner sees the flag in `list_pending` | Offline tests; the two evals are updated |
 | S10, N4 | Tests for the tools Lambda (11) and the DynamoDB store (6), including the race between two decisions | They need `boto3`. They are skipped without it |
@@ -1097,10 +1132,10 @@ every one of them matched.
 | A3 | Find your role ARN | `aws sts get-caller-identity --query Arn --output text` | If it is an `assumed-role` ARN, use the IAM role behind it: `arn:aws:iam::<account>:role/<name>` |
 | A4 | Deploy, with your role allowed to run the proof | `cdk deploy --all -c visaDemoPrincipalArn=<ARN from A3>` | The stacks update |
 | A5 | Rebuild and push the orchestrator image | `server.py` changed, and the stack names the image by digest, so update the digest | The runtime answers `/ping` |
-| A6 | Write Legal's fact through the new tool | `memory_write` as Liam, into `org_robotinc_dept_legal`. Watch the Lambda's logs on this first call (S5) | A result with an event ID. Wait a minute for extraction |
-| A7 | Read it both ways | `memory_search` as Liam, then as Maya with no grant | Liam gets the record. Maya gets a 403 |
+| A6 | Write Legal's fact through the new tool | `memory_write` as Oleg, into `org_robotinc_dept_legal`. Watch the Lambda's logs on this first call (S5) | A result with an event ID. Wait a minute for extraction |
+| A7 | Read it both ways | `memory_search` as Oleg, then as Maya with no grant | Oleg gets the record. Maya gets a 403 |
 | A8 | Run the proof | `python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60` | Line 1 `ALLOWED`. Lines 2 and 3 `REFUSED by AWS: AccessDeniedException` |
-| A9 | Run the grant end to end | Maya requests, Liam approves, Maya searches, the window closes, Maya searches again | Allowed inside the window; refused after it |
+| A9 | Run the grant end to end | Maya requests, Oleg approves, Maya searches, the window closes, Maya searches again | Allowed inside the window; refused after it |
 | A10 | Send me the outputs of A6 to A9 | Paste them | Then replace the transcripts in the blog with the real ones (S1) |
 
 If the proof does not match:
@@ -1111,7 +1146,7 @@ If the proof does not match:
 | A8 line 2 allowed | The namespace condition is not applied to this call | Stop and send me the output. The design needs a different condition key, and nothing else should be built on it until this is known |
 | An error when the visa is minted in A8 | Your role is not in the visa role's trust policy | Check A3 and A4 |
 | A6 or A7 fails with `UnknownServiceError` or an unknown parameter | The Lambda runtime's AWS SDK is too old (S5) | Bundle a current `boto3` with the function |
-| A7 as Liam returns nothing | Extraction has not finished, or the write was masked or blocked by the Guardrail (S3, S4) | Wait a minute. Then read the Lambda's log for the write |
+| A7 as Oleg returns nothing | Extraction has not finished, or the write was masked or blocked by the Guardrail (S3, S4) | Wait a minute. Then read the Lambda's log for the write |
 | A6 times out | The function has 10 seconds for the Guardrail call and the write, on a cold start | Raise the timeout |
 
 ### Your decisions
@@ -1144,7 +1179,7 @@ In this order. Each is one change with its own tests.
 | N7 | Search across every namespace the caller may read | M7 | **Done, deployed and proven live** (7 tests). Found Q4 (a user's own namespace can't be read - M8) along the way. See "N7: one search across what you may read" |
 | N8 | One more sharing pattern: a published fact | Scale, S6 | **Done, deployed and proven live** (14 tests). Found and fixed a real SDK-version bug along the way (P5). Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
-| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | **Done, deployed and proven live** (5 tests). Maya allowed, Liam refused by the policy engine. See "N10: the department gate" |
+| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | **Done, deployed and proven live** (5 tests). Maya allowed, Oleg refused by the policy engine. See "N10: the department gate" |
 
 ### The blog
 
@@ -1176,7 +1211,7 @@ Reworked 23 November 2026 (`docs/index.html`). What changed, and what is still o
 | 1. Short-term memory | Maya asks two questions in one conversation; the agent follows the thread | After stage 3, step 3 |
 | 2. Long-term memory | A new conversation; the agent still knows what it learned | After stage 3, step 3 |
 | 3. Shared, and refused | Legal records a fact; Engineering's read is refused | After A7. Refused by AWS itself after A8 |
-| 4. The visa | Liam approves; the same call works; the window closes; AWS refuses again. The policy is on screen | After A9 |
+| 4. The visa | Oleg approves; the same call works; the window closes; AWS refuses again. The policy is on screen | After A9 |
 
 Short-term memory is the transcript: events, for one person in one conversation, available
 at once, kept 7 days here. Long-term memory is what was learned: records that a model
@@ -1228,7 +1263,7 @@ or write any namespace. The shared client-credentials token is accepted on this 
 The same file is worse for approvals: `approve_access`, `deny_access` and `list_pending`
 (`server.py:100-110`) take `approver_email` and `owner_email` from the body. So the hole that
 `IdentityInterceptor` closes for the MCP tools is still open on the orchestrator: anyone can
-approve a grant as Liam through Tier One.
+approve a grant as Oleg through Tier One.
 
 The blog and the README both admit the first half. Neither mentions the approval half. For a
 project whose subject is "who may read this memory", this is the first fix.
@@ -1305,7 +1340,7 @@ Related problems:
   `event_expiry_duration=7` (`agentcore_stack.py:675-683`). The comment says 31 is the
   minimum. For shared organisational knowledge, the minimum is the wrong choice.
 - **`actorId` is used as the namespace** (`agentcore_backend.py:23`). Every member of a
-  department writes as one actor. AgentCore then cannot tell Liam from another lawyer.
+  department writes as one actor. AgentCore then cannot tell Oleg from another lawyer.
 
 **Recommendation:** split the two kinds of memory and say so in the talk.
 - *Conversational memory:* per user and per session, extracted by AgentCore. Keep as is.
@@ -1580,7 +1615,7 @@ A 30-minute shape that uses what is already strong:
 2. **The model (5 min).** The five sharing patterns. Isolated by default, shared on purpose.
 3. **Demo 1: shared context working (5 min).** Legal publishes a fact. Engineering's agent
    uses it in an answer, and shows who said it and when.
-4. **Demo 2: the visa (7 min).** Maya is denied, requests, Liam approves from a different MCP
+4. **Demo 2: the visa (7 min).** Maya is denied, requests, Oleg approves from a different MCP
    client, `whoami` before and after expiry. Then the adversarial calls: approve your own
    request; approve as another owner.
 5. **How it is built (5 min).** Verified identity at the Gateway, Cedar for the decision,

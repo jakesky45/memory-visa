@@ -57,10 +57,10 @@ def test_eval1_silo_enforcement_within_org():
 def test_eval2_cross_team_flow_within_org():
     """Legal and Engineering share a project namespace - that's not a leak, it's the design."""
     memory = _memory()
-    liam = UserClaims(email="liam@robotinc.example", org="robotinc", departments=("legal",), projects=("atlas-v2",))
+    oleg = UserClaims(email="oleg@robotinc.example", org="robotinc", departments=("legal",), projects=("atlas-v2",))
     maya = UserClaims(email="maya@robotinc.example", org="robotinc", departments=("engineering",), projects=("atlas-v2",))
 
-    memory.put(liam, "org_robotinc_proj_atlas-v2", "Supplier X is banned under export control 7A994.", T0)
+    memory.put(oleg, "org_robotinc_proj_atlas-v2", "Supplier X is banned under export control 7A994.", T0)
 
     results = memory.retrieve(maya, "org_robotinc_proj_atlas-v2", "export control", T0)
     assert any("7A994" in r["text"] for r in results)
@@ -88,18 +88,18 @@ def test_eval4_controlled_cross_domain_switching():
     grants = GrantStore()
     memory = GuardedMemory(FakeMemoryBackend(), fake_apply_guardrail, grants)
     maya = UserClaims(email="maya@robotinc.example", org="robotinc", departments=("engineering",))
-    liam_namespace = "org_robotinc_dept_legal"
+    oleg_namespace = "org_robotinc_dept_legal"
 
     memory.put(
-        UserClaims(email="liam@robotinc.example", org="robotinc", departments=("legal",)),
-        liam_namespace,
+        UserClaims(email="oleg@robotinc.example", org="robotinc", departments=("legal",)),
+        oleg_namespace,
         "Export control 7A994 blocks Supplier X for battery cells.",
         T0,
     )
 
     # 1. No access yet - static claims don't cover Legal, and no grant exists.
     with pytest.raises(PermissionError):
-        memory.retrieve(maya, liam_namespace, "export control", T0)
+        memory.retrieve(maya, oleg_namespace, "export control", T0)
     assert "check_shipping_classification" in allowed_tools(maya, grants, T0)  # her own domain's tool, for contrast
     assert "search_contracts" not in allowed_tools(maya, grants, T0)  # Legal's tool, not available
 
@@ -108,30 +108,30 @@ def test_eval4_controlled_cross_domain_switching():
         Grant(
             grant_id="g-1",
             requester_namespace="org_robotinc_user_maya@robotinc.example",
-            target_namespace=liam_namespace,
+            target_namespace=oleg_namespace,
             reason="Need export-control classification for the X-7 battery pack before the Q4 shipment.",
             requested_at=T0,
             duration=dt.timedelta(hours=2),
         )
     )
     with pytest.raises(PermissionError):
-        memory.retrieve(maya, liam_namespace, "export control", T0)
+        memory.retrieve(maya, oleg_namespace, "export control", T0)
 
-    # 3. Liam approves it.
+    # 3. Oleg approves it.
     t_approved = T0 + dt.timedelta(minutes=5)
-    grants.approve(grant.grant_id, approved_by="liam@robotinc.example", now=t_approved)
+    grants.approve(grant.grant_id, approved_by="oleg@robotinc.example", now=t_approved)
 
     # 4. Within the window, the memory namespace opens, to read. Legal's tools do not:
     # she asked to read what Legal knows, not to act as Legal.
     t_in_window = t_approved + dt.timedelta(hours=1)
-    results = memory.retrieve(maya, liam_namespace, "export control", t_in_window)
+    results = memory.retrieve(maya, oleg_namespace, "export control", t_in_window)
     assert any("7A994" in r["text"] for r in results)
     assert "search_contracts" not in allowed_tools(maya, grants, t_in_window)
 
     # 5. Past the window, it reverts with no manual cleanup - same denial as step 1.
     t_expired = t_approved + dt.timedelta(hours=3)
     with pytest.raises(PermissionError):
-        memory.retrieve(maya, liam_namespace, "export control", t_expired)
+        memory.retrieve(maya, oleg_namespace, "export control", t_expired)
     assert "search_contracts" not in allowed_tools(maya, grants, t_expired)
 
     # 6. Every transition is in the audit log - nothing happened silently.

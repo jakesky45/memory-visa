@@ -31,14 +31,14 @@ def _backend(response, strategy_id=None):
 
 def test_a_published_record_is_sent_as_written_with_its_metadata():
     backend = _backend({"successfulRecords": [{"memoryRecordId": "mem-abc", "status": "SUCCEEDED"}], "failedRecords": []})
-    result = backend.put_record("org_robotinc_published", "The X-7 is 7A994.", {"published_by": "liam@robotinc.example"})
+    result = backend.put_record("org_robotinc_published", "The X-7 is 7A994.", {"published_by": "oleg@robotinc.example"})
 
     sent = backend._client.calls[0]
     record = sent["records"][0]
     assert sent["memoryId"] == "mem-1" and len(sent["records"]) == 1
     assert record["namespaces"] == ["org_robotinc_published"]
     assert record["content"] == {"text": "The X-7 is 7A994."}
-    assert record["metadata"] == {"published_by": {"stringValue": "liam@robotinc.example"}}
+    assert record["metadata"] == {"published_by": {"stringValue": "oleg@robotinc.example"}}
     assert isinstance(record["timestamp"], dt.datetime) and 1 <= len(record["requestIdentifier"]) <= 80
     assert "memoryStrategyId" not in record
     assert result == {"namespace": "org_robotinc_published", "recordId": "mem-abc"}
@@ -60,9 +60,9 @@ def test_metadata_on_a_result_is_made_plain():
     summary = {
         "memoryRecordId": "mem-abc",
         "content": {"text": "The X-7 is 7A994."},
-        "metadata": {"published_by": {"stringValue": "liam@robotinc.example"}, "department": {"stringValue": "legal"}},
+        "metadata": {"published_by": {"stringValue": "oleg@robotinc.example"}, "department": {"stringValue": "legal"}},
     }
-    assert _record(summary)["metadata"] == {"published_by": "liam@robotinc.example", "department": "legal"}
+    assert _record(summary)["metadata"] == {"published_by": "oleg@robotinc.example", "department": "legal"}
     assert "metadata" not in _record({"content": {"text": "x"}})
 
 

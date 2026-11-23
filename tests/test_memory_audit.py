@@ -14,7 +14,7 @@ from .fakes import FakeMemoryBackend, fake_apply_guardrail
 T0 = dt.datetime(2026, 11, 21, 9, 0, tzinfo=dt.timezone.utc)
 LEGAL = "org_robotinc_dept_legal"
 MAYA = UserClaims(email="maya@robotinc.example", org="robotinc", departments=("engineering",))
-LIAM = UserClaims(email="liam@robotinc.example", org="robotinc", departments=("legal",))
+OLEG = UserClaims(email="oleg@robotinc.example", org="robotinc", departments=("legal",))
 
 
 class Backend(FakeMemoryBackend):
@@ -32,7 +32,7 @@ class Backend(FakeMemoryBackend):
 def setup():
     grants = GrantStore()
     memory = GuardedMemory(Backend(), fake_apply_guardrail, grants)
-    memory.put(LIAM, LEGAL, "The X-7 is classified 7A994.", T0)
+    memory.put(OLEG, LEGAL, "The X-7 is classified 7A994.", T0)
     return memory, grants
 
 
@@ -47,7 +47,7 @@ def _approved_grant(grants, hours=2):
             duration=dt.timedelta(hours=hours),
         )
     )
-    grants.approve("g-1", approved_by="liam@robotinc.example", now=T0)
+    grants.approve("g-1", approved_by="oleg@robotinc.example", now=T0)
 
 
 def _last(grants):
@@ -56,7 +56,7 @@ def _last(grants):
 
 def test_a_members_result_says_where_it_came_from(setup):
     memory, _ = setup
-    result = memory.retrieve(LIAM, LEGAL, "X-7", T0)[0]
+    result = memory.retrieve(OLEG, LEGAL, "X-7", T0)[0]
     assert result["namespace"] == LEGAL
     assert result["record_id"] == "mem-1"
     assert result["access"] == {"via": "membership"}
@@ -69,7 +69,7 @@ def test_a_visitors_result_names_the_grant_the_approver_and_the_end(setup):
     assert result["access"] == {
         "via": "grant",
         "grant_id": "g-1",
-        "approved_by": "liam@robotinc.example",
+        "approved_by": "oleg@robotinc.example",
         "expires_at": (T0 + dt.timedelta(hours=2)).isoformat(),
     }
 
@@ -122,14 +122,14 @@ def test_no_audit_no_answer(setup):
 
     grants.record_access = broken
     with pytest.raises(RuntimeError, match="audit table"):
-        memory.retrieve(LIAM, LEGAL, "X-7", T0)
+        memory.retrieve(OLEG, LEGAL, "X-7", T0)
 
 
 def test_a_write_is_recorded_with_its_author(setup):
     """The record does not carry its author, so the trail does."""
     _, grants = setup
     entry = grants.audit_log[0]
-    assert entry["event"] == "write" and entry["actor"] == "liam@robotinc.example"
+    assert entry["event"] == "write" and entry["actor"] == "oleg@robotinc.example"
     assert entry["record_ids"] == ["ev-1"]
 
 
@@ -150,7 +150,7 @@ def test_a_write_the_guardrail_blocks_is_recorded_without_the_text(setup):
 
     memory._apply_guardrail = block
     with pytest.raises(ValueError):
-        memory.put(LIAM, LEGAL, "-----BEGIN RSA PRIVATE KEY-----", T0)
+        memory.put(OLEG, LEGAL, "-----BEGIN RSA PRIVATE KEY-----", T0)
     entry = _last(grants)
     assert entry["event"] == "write_refused"
     assert "PRIVATE KEY" not in str(entry)

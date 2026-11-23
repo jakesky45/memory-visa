@@ -1,7 +1,7 @@
 """Closes the pull-only gap, in both directions: a DynamoDB Streams trigger
 on GrantsTable fires this Lambda on every grant write, and it posts to Slack
-via an Incoming Webhook - no more "Liam only finds out if he thinks to ask,"
-and no more "Maya has no idea whether Liam ever looked at it."
+via an Incoming Webhook - no more "Oleg only finds out if he thinks to ask,"
+and no more "Maya has no idea whether Oleg ever looked at it."
 
 Reacts to the grant's new status, not the DynamoDB event type - `pending`
 notifies the owner there's something to approve, `approved`/`denied` tells

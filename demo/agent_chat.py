@@ -78,7 +78,7 @@ def _remote_turn(url: str, token: str, session_id: str, prompt: str) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--user", default="maya", help="Cognito username (maya, liam, priya)")
+    parser.add_argument("--user", default="maya", help="Cognito username (maya, oleg, priya)")
     parser.add_argument("--token", help="an access token, if you already have one")
     parser.add_argument("--url", help="POST to the deployed agent at this URL; default is the local loop")
     parser.add_argument("--model", help="Bedrock model ID; default anthropic.claude-opus-5-5")

@@ -128,6 +128,17 @@
     font-size: 1.1rem;
     line-height: 1.55;
   }
+  aside.note {
+    border-left: 2px solid var(--accent2);
+    background: var(--bg-elev);
+    padding: 0.9rem 1.2rem;
+    margin: 0 0 1.5rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  aside.note strong { color: var(--accent2); font-family: "Space Grotesk", sans-serif; }
   .content {
     max-width: 700px;
     margin: 0 auto;
@@ -378,23 +389,20 @@
     <a href="#the-problem">The problem</a>
     <a href="#terms">How a call travels</a>
     <a href="#five-ways">Three ways to share</a>
-    <a href="#lifecycle">The lifecycle</a>
     <a href="#what-a-grant-unlocks">What a grant unlocks</a>
     <a href="#maya-gets-her-fact">Maya gets her fact</a>
     <a href="#aws-enforces">AWS enforces every read</a>
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
-    <a href="#people-and-agents">The visa belongs to a person</a>
     <a href="#approval-ui">No bespoke UI</a>
     <a href="#identity-binding">Identity binding</a>
-    <a href="#closing-the-loop">Closing the loop</a>
-    <a href="#what-a-caller-gets">whoami</a>
+    <a href="#closing-the-loop">Closing the loop, and whoami</a>
     <a href="#what-agentcore-ships">Why not AgentCore's own policies</a>
     <a href="#rules">The rules it follows</a>
-    <a href="#quickstart">Quickstart</a>
     <a href="#staleness-risk">Staleness between writes</a>
     <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
+    <a href="#quickstart">Quickstart</a>
     <a href="#glossary">Glossary</a>
   </nav>
 
@@ -407,23 +415,20 @@
         <a href="#the-problem">The problem</a>
         <a href="#terms">How a call travels</a>
     <a href="#five-ways">Three ways to share</a>
-        <a href="#lifecycle">The lifecycle</a>
         <a href="#what-a-grant-unlocks">What a grant unlocks</a>
         <a href="#maya-gets-her-fact">Maya gets her fact</a>
         <a href="#aws-enforces">AWS enforces every read</a>
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
-        <a href="#people-and-agents">The visa belongs to a person</a>
     <a href="#approval-ui">No bespoke UI</a>
         <a href="#identity-binding">Identity binding</a>
-        <a href="#closing-the-loop">Closing the loop</a>
-        <a href="#what-a-caller-gets">whoami</a>
+        <a href="#closing-the-loop">Closing the loop, and whoami</a>
         <a href="#what-agentcore-ships">Why not AgentCore's own policies</a>
     <a href="#rules">The rules it follows</a>
-    <a href="#quickstart">Quickstart</a>
         <a href="#staleness-risk">Staleness between writes</a>
     <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
+    <a href="#quickstart">Quickstart</a>
     <a href="#glossary">Glossary</a>
       </nav>
     </details>
@@ -472,7 +477,7 @@
 
     <p>The catch shows up the moment you actually try it. Centralised means everyone's agent can now see everything, which is worse than the islands you started with - that's not a hypothetical, it's the first thing that breaks. memory-visa is the piece in between: the store is shared, each team's part of it stays isolated by default, and crossing that boundary is a deliberate, audited, time-boxed act, not a permanent hole in the wall.</p>
 
-    <p>One distinction runs through everything below. Memory here belongs to people and teams, not to agents. An agent is how a person reaches it. So MCP means Maya keeps using Claude, Liam can be on Cursor, Priya on whatever ships next year: they all call the same tools behind the same Gateway, into the same memory, each as themselves.</p>
+    <p>One distinction runs through everything below. Memory here belongs to people and teams, not to agents. An agent is how a person reaches it. So MCP means Maya keeps using Claude, Oleg can be on Cursor, Priya on whatever ships next year: they all call the same tools behind the same Gateway, into the same memory, each as themselves.</p>
 
     <h2 id="the-problem">The Problem, Inside One Company</h2>
 
@@ -483,7 +488,7 @@
         <div class="container-label">Robotinc</div>
         <div class="row">
           <div class="box wobble-a"><strong>Maya</strong><br><span class="sub">Engineering</span></div>
-          <div class="box wobble-b"><strong>Liam</strong><br><span class="sub">Legal</span></div>
+          <div class="box wobble-b"><strong>Oleg</strong><br><span class="sub">Legal</span></div>
           <div class="box wobble-c"><strong>Priya</strong><br><span class="sub">Finance</span></div>
           <div class="box hatch wobble-a"><strong>Jordan</strong><br><span class="sub">contractor - external, one project, no department</span></div>
         </div>
@@ -492,7 +497,7 @@
 
     <p>The first three each see only their own department's memory and tools, nobody else's - correctly, on an ordinary day. Jordan starts narrower still, the way a contractor's access should look from day one rather than something retrofitted after the fact.</p>
 
-    <p>Today isn't an ordinary day for Maya - and "ask Liam to paste it into Slack" isn't an audit trail.</p>
+    <p>Today isn't an ordinary day for Maya - and "ask Oleg to paste it into Slack" isn't an audit trail.</p>
 
     <table>
     <tr><th>Requirement</th><th>Failure mode if unmet</th></tr>
@@ -502,7 +507,7 @@
     </tr>
     <tr>
       <td>Controlled cross-domain access</td>
-      <td>Maya needs Liam's classification before the shipment goes out. Permanent isolation makes that impossible; no isolation makes row one pointless.</td>
+      <td>Maya needs Oleg's classification before the shipment goes out. Permanent isolation makes that impossible; no isolation makes row one pointless.</td>
     </tr>
     </table>
 
@@ -510,7 +515,7 @@
 
     <h2 id="terms">How a Call Travels</h2>
 
-    <p>Whether it's Maya searching or Liam approving, a request goes through the same four steps before any tool runs:</p>
+    <p>Whether it's Maya searching or Oleg approving, a request goes through the same four steps before any tool runs:</p>
 
     <div class="sketch col">
       <div class="box wobble-a">AI Client<br><span class="sub">Claude / Cursor / Kiro</span></div>
@@ -540,27 +545,25 @@
     <tr><td><strong>By visa</strong></td><td>One named person, for a short window</td><td>The team's owner, every time</td></tr>
     </table>
 
-    <p>What Maya is allowed to see simply falls out of those choices: her own notes and Engineering's memory, anything a team has published, and anything she currently holds a visa for. Nothing more.</p>
+    <p>Apply those three rows to Maya and that's the whole of what she can see: her own notes, Engineering's memory because she's a member, whatever any team has published org-wide, and any namespace she currently holds a visa for.</p>
 
-    <p>Only the last row puts a human in the loop, and that's deliberate. An approval costs Liam's attention every single time, so it's worth saving for the real exception. Which gives you a rule of thumb: if the same visa keeps getting requested, that fact should have been published.</p>
+    <p>Only the last row puts a human in the loop, and that's deliberate. An approval costs Oleg's attention every single time, so it's worth saving for the real exception. Which gives you a rule of thumb: if the same visa keeps getting requested, that fact should have been published.</p>
 
     <p>Most of this post is about the last row, because it's the one most teams haven't built. Publishing gets its own section further down.</p>
 
-    <h2 id="lifecycle">The Lifecycle</h2>
-
-    <p>A grant is a row in its own table, <code>GrantStore</code>, on top of the static isolation and not in place of it. Request, approve, use within the window, expire automatically, audit trail throughout. No manual cleanup step: expiry is checked lazily, the next time anyone asks rather than on a cron.</p>
+    <p>The lifecycle for that last row is a row in its own table, <code>GrantStore</code>, on top of the static isolation and not in place of it. Request, approve, use within the window, expire automatically, audit trail throughout. No manual cleanup step: expiry is checked lazily, the next time anyone asks rather than on a cron.</p>
 
     <div class="sketch col">
       <div class="box wobble-a">Maya requests access<br><span class="sub">into Legal's domain, with a reason</span></div>
       <div class="arrow-down"></div>
-      <div class="box dashed-green wobble-b">GrantStore: pending<br><span class="sub">waiting on Liam</span></div>
+      <div class="box dashed-green wobble-b">GrantStore: pending<br><span class="sub">waiting on Oleg</span></div>
       <div class="arrow-down"></div>
-      <div class="box wobble-c">Liam approves<br><span class="sub">time-boxed window opens</span></div>
+      <div class="box wobble-c">Oleg approves<br><span class="sub">time-boxed window opens</span></div>
       <div class="arrow-down"></div>
       <div class="box wobble-a">Maya's namespace opens<br><span class="sub">then closes automatically</span></div>
     </div>
 
-    <p>No grant, no access. Approved or not, it's always Liam's call to make, and it always expires on its own.</p>
+    <p>No grant, no access. Approved or not, it's always Oleg's call to make, and it always expires on its own.</p>
 
     <h2 id="what-a-grant-unlocks">What a Grant Unlocks</h2>
 
@@ -572,14 +575,14 @@
     <thead><tr><th>Department</th><th>Tools</th><th>Who has them with no grant</th></tr></thead>
     <tbody>
     <tr><td>Engineering</td><td><code>check_shipping_classification</code>, <code>generate_packaging_manifest</code>, <code>query_firmware_specs</code></td><td>Maya</td></tr>
-    <tr><td>Legal</td><td><code>search_contracts</code>, <code>check_export_control</code>, <code>log_compliance_note</code></td><td>Liam</td></tr>
+    <tr><td>Legal</td><td><code>search_contracts</code>, <code>check_export_control</code>, <code>log_compliance_note</code></td><td>Oleg</td></tr>
     <tr><td>Finance</td><td><code>query_budget</code>, <code>query_ma_targets</code></td><td>Priya</td></tr>
     </tbody>
     </table>
 
     <p><code>allowed_tools()</code> computes this from the same claims and the same grant store as every other check in this post. The tests assert it, and a live <code>whoami</code> call (below) shows Jordan gaining Engineering's three tools when his grant opened and losing them when it closed.</p>
 
-    <p>The gate holds now - it didn't always. Robotinc has one real department-scoped tool behind the Gateway, <code>check_shipping_classification</code>, and a Cedar policy was meant to gate it by the caller's department. For a while it couldn't: the Gateway validates Cognito access tokens, and access tokens carry no custom attributes by default, so <code>principal.hasTag("department")</code> was never true. Making the policy active denied everyone, Maya included. The fix was a small Cognito pre-token-generation trigger that copies the caller's own <code>org</code> and <code>department</code> attributes into their access token, so AgentCore has something to turn into a tag. Deployed and proven live: Maya, engineering, still gets the stub answer; Liam, legal, is refused by the policy engine itself, not by this project's own code. <code>whoami</code> reports which mode it's in.</p>
+    <p>The gate holds now - it didn't always. Robotinc has one real department-scoped tool behind the Gateway, <code>check_shipping_classification</code>, and a Cedar policy was meant to gate it by the caller's department. For a while it couldn't: the Gateway validates Cognito access tokens, and access tokens carry no custom attributes by default, so <code>principal.hasTag("department")</code> was never true. Making the policy active denied everyone, Maya included. The fix was a small Cognito pre-token-generation trigger that copies the caller's own <code>org</code> and <code>department</code> attributes into their access token, so AgentCore has something to turn into a tag. Deployed and proven live: Maya, engineering, still gets the stub answer; Oleg, legal, is refused by the policy engine itself, not by this project's own code. <code>whoami</code> reports which mode it's in.</p>
 
     <p>One thing not to read into that. The gate looks at department and nothing else, so a grant doesn't open it: Jordan can hold a grant that carries Engineering's tools in this project's own model, and the Gateway will still refuse him <code>check_shipping_classification</code>, because his token has no department at all. The two aren't joined up yet.</p>
 
@@ -587,24 +590,17 @@
 
     <p>Memory access is the thing a grant actually opens, so it is worth showing working and not just asserted. (Two setup details cost time and are worth knowing: the role AgentCore Memory uses for extraction needs permission to invoke a Bedrock model, or every search comes back empty with no error; and the strategy's namespace template must match the namespace you search, here <code>{actorId}</code>.)</p>
 
-    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, like <code>request_access</code> and <code>whoami</code>: discovered with <code>tools/list</code>, and the caller's identity comes from <code>IdentityInterceptor</code>, never from an argument. They did not start that way. The first version put memory behind an HTTP target that trusted a <code>claims</code> object in the request body, so anyone with a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is deleted, not patched. Here is the scenario from the top of this post, run against the deployed stack. (The JSON is reformatted for reading.) Liam writes the fact Maya needs:</p>
+    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, like <code>request_access</code> and <code>whoami</code>: discovered with <code>tools/list</code>, and the caller's identity comes from <code>IdentityInterceptor</code>, never from an argument. They did not start that way. The first version put memory behind an HTTP target that trusted a <code>claims</code> object in the request body, so anyone with a Gateway token could read or write as anyone else, or approve their own request as Oleg. That path is deleted, not patched. Here is the scenario from the top of this post, run against the deployed stack. (The JSON is reformatted for reading.) Oleg writes the fact Maya needs:</p>
 
     <pre><code>{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
      "params": {"name": "AccessRequestTools___memory_write",
                 "arguments": {"namespace": "org_robotinc_dept_legal",
                               "text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}}}</code></pre>
-    <pre><code>{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795429942485#5581be4e"}}</code></pre>
+    <pre><code>{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795456737294#5ccde547"}}</code></pre>
 
-    <p>A couple of minutes later - real background extraction, not an instant write - Maya, holding a grant into Legal's namespace, searches for it. This is the record that comes back for her, taken from the live run shown in full <a href="#one-search">further down</a>:</p>
+    <p>A couple of minutes later - real background extraction, not an instant write - Maya, holding a grant into Legal's namespace, searches for it and gets it back: the fact from paragraph one, with Maya's packaging manifest fed in time, three days before the Atlas-v2 ships. Notice what comes with it, not just the text: the namespace it lives in, and exactly why she was allowed to see it - which grant, who approved it, and when it runs out. An agent that repeats this fact can say whose it is and on what authority it was read. (The full record is in <a href="#one-search">One Search, Still Scoped</a>, further down, next to what the same search looked like before her grant existed.)</p>
 
-    <pre><code>{"text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment.",
- "namespace": "org_robotinc_dept_legal",
- "access": {"via": "grant", "grant_id": "72c2e6a7-...", "approved_by": "liam@robotinc.example", "expires_at": "2026-11-23T15:26:32+00:00"},
- "score": 0.496, ...}</code></pre>
-
-    <p>That's the fact from paragraph one, and Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships. Notice what came with it: the namespace it lives in, and exactly why she was allowed to see it - which grant, who approved it, and when it runs out. An agent that repeats this fact can say whose it is and on what authority it was read.</p>
-
-    <p>The grant itself proved out exactly as designed, end to end, against the real stack: Maya's own first search, with no grant yet, came back <code>403 "no static claim, and no active grant"</code>; once Liam approved, the same search returned the fact; a write under that same grant came back <code>403 "a grant never allows a write"</code>; and once the three-minute window closed, the same search was refused again - the grant doesn't linger past its own expiry.</p>
+    <p>The grant itself proved out exactly as designed, end to end, against the real stack: Maya's own first search, with no grant yet, came back <code>403 "no static claim, and no active grant"</code>; once Oleg approved, the same search returned the fact; a write under that same grant came back <code>403 "a grant never allows a write"</code>; and once the three-minute window closed, the same search was refused again - the grant doesn't linger past its own expiry.</p>
 
     <h2 id="aws-enforces">AWS Enforces Every Read</h2>
 
@@ -678,7 +674,7 @@
     <p>Run against the deployed stack (shortened):</p>
 
     <pre><code>Maya publishes for legal    403  "does not own domain 'legal' in org 'robotinc'"
-Liam publishes for legal    200  a record ID, published_by liam@robotinc.example
+Oleg publishes for legal    200  a record ID, published_by oleg@robotinc.example
 
 Maya searches org_robotinc_published, with no grant:
   the fact, word for word
@@ -688,7 +684,7 @@ Maya searches org_robotinc_published, with no grant:
 Maya writes to org_robotinc_published
                             403  "no static claim, and no active grant"</code></pre>
 
-    <p>No request, no approval, no waiting around - and it was searchable straight away, because there was nothing to extract. IAM holds this line too: the tools Lambda can only write a record directly where the namespace looks like <code>org_*_published</code>. There's a proof script for that as well, <code>demo/publish_boundary_demo.py</code>. It takes a role with only that permission and calls AWS directly: a write to a published namespace goes through, and the same write to a department's namespace, or a person's own, comes back <code>AccessDeniedException</code>.</p>
+    <p>No request, no approval, no waiting on an approver - there's no model extraction standing between the write and the read, just the few seconds any direct write takes to land in the index. IAM holds this line too: the tools Lambda can only write a record directly where the namespace looks like <code>org_*_published</code>. There's a proof script for that as well, <code>demo/publish_boundary_demo.py</code>. It takes a role with only that permission and calls AWS directly: a write to a published namespace goes through, and the same write to a department's namespace, or a person's own, comes back <code>AccessDeniedException</code>.</p>
 
     <p>What you can't do yet: take a published fact back, or replace it with a newer one. More on that near the end.</p>
 
@@ -704,21 +700,21 @@ Maya writes to org_robotinc_published
 
     <pre><code>{"records": [
   {"text": "The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal.",
-   "namespace": "org_robotinc_published", "access": {"via": "published"}, "score": 0.577, ...},
+   "namespace": "org_robotinc_published", "access": {"via": "published"}, "score": 0.578, ...},
   {"text": "Maya prefers export-control facts to be cited with the regulation code.",
    "namespace": "org_robotinc_user_maya_at_robotinc_dot_example", "access": {"via": "membership"}, "score": 0.337, ...}
  ],
  "searched": ["org_robotinc_dept_engineering", "org_robotinc_user_maya_at_robotinc_dot_example", "org_robotinc_published"],
  "failed": []}</code></pre>
 
-    <p><code>org_robotinc_dept_legal</code> is not in <code>searched</code> - no grant, no read. Maya requests it, Liam approves, the same call again:</p>
+    <p><code>org_robotinc_dept_legal</code> is not in <code>searched</code> - no grant, no read. Maya requests it, Oleg approves, the same call again:</p>
 
     <pre><code>{"records": [
   {"text": "The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal.",
-   "namespace": "org_robotinc_published", "access": {"via": "published"}, "score": 0.577, ...},
+   "namespace": "org_robotinc_published", "access": {"via": "published"}, "score": 0.578, ...},
   {"text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment.",
    "namespace": "org_robotinc_dept_legal",
-   "access": {"via": "grant", "grant_id": "72c2e6a7-...", "approved_by": "liam@robotinc.example", "expires_at": "2026-11-23T15:26:32+00:00"},
+   "access": {"via": "grant", "grant_id": "7e601306-...", "approved_by": "oleg@robotinc.example", "expires_at": "2026-11-23T18:10:03+00:00"},
    "score": 0.496, ...},
   "... three more records from org_robotinc_dept_legal, same grant, same access block ..."
  ],
@@ -732,26 +728,22 @@ Maya writes to org_robotinc_published
 
     <p><code>grant_activity</code> shows one grant's whole trail to the two people it concerns, the owner and the requester (from a live run, shortened):</p>
 
-    <pre><code>grant_activity as Liam (the owner):
+    <pre><code>grant_activity as Oleg (the owner):
   requested       maya@robotinc.example, with her reason
-  approved        liam@robotinc.example
+  approved        oleg@robotinc.example
   read            maya@robotinc.example, her question, the IDs of the four records returned
   write_refused   maya@robotinc.example  "a grant never allows a write"
 
 grant_activity as Priya (neither):
   403  "is not the owner of 'legal' and did not request"</code></pre>
 
-    <p>Which means Liam can ask his own AI client "what did Maya actually read under that grant?" and get a straight answer, from the same table that holds his approval.</p>
-
-    <h2 id="people-and-agents">The Visa Belongs to a Person</h2>
-
-    <p>One thing to be exact about, because it's easy to blur. Every identity here is a person's login, and a grant goes to a person. An agent doesn't have an identity or a permission of its own - it carries its person's token and acts as them. So Liam is approving Maya, not Maya's agent, and it's Maya's name in the audit trail.</p>
-
-    <p>That has one consequence worth saying out loud. "Human-approved" really means "approved with Liam's login". Approval should stay something a person does - not something their agent can quietly do for them. That's why the agent in this repo isn't given the approval tools.</p>
+    <p>Which means Oleg can ask his own AI client "what did Maya actually read under that grant?" and get a straight answer, from the same table that holds his approval.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 
-    <p>A grant with nobody to approve it is a queue. The obvious answer is a Slack app with an Approve button, but that needs an interactivity endpoint, signature verification, and its own answer to "whose Slack account counts as Liam?". That is a second security model beside the Cognito one.</p>
+    <p>One thing to be exact about first, because it's easy to blur. Every identity here is a person's login, and a grant goes to a person. An agent doesn't have an identity or a permission of its own - it carries its person's token and acts as them. So Oleg is approving Maya, not Maya's agent, and it's Maya's name in the audit trail. "Human-approved" really means "approved with Oleg's login" - which is why the agent in this repo isn't given the approval tools. Approval should stay something a person does, not something their agent can quietly do for them.</p>
+
+    <p>A grant with nobody to approve it is a queue. The obvious answer is a Slack app with an Approve button, but that needs an interactivity endpoint, signature verification, and its own answer to "whose Slack account counts as Oleg?". That is a second security model beside the Cognito one.</p>
 
     <p>The approver already has an AI client open: Claude, Cursor, Kiro. MCP does not care which. If <code>approve_access</code> is a real tool that client can see and call, the approval step needs no new surface, no new login, and no admin request.</p>
 
@@ -783,10 +775,10 @@ grant_activity as Priya (neither):
       <figcaption>The Gateway's configuration - interceptor, enforcement, and Cognito auth.</figcaption>
     </figure>
 
-    <p>Maya, Liam, and Priya each log in with their own real Cognito account - there's no shared service credential standing in for any of them.</p>
+    <p>Maya, Oleg, and Priya each log in with their own real Cognito account - there's no shared service credential standing in for any of them.</p>
 
     <figure class="shot">
-      <img src="images/cognito-users.jpg" alt="Amazon Cognito user pool console showing three confirmed, enabled users: priya, maya, and liam, each with their own verified @robotinc.example email">
+      <img src="images/cognito-users.jpg" alt="Amazon Cognito user pool console showing three confirmed, enabled users: priya, maya, and oleg, each with their own verified @robotinc.example email">
       <figcaption>The three Cognito users.</figcaption>
     </figure>
 
@@ -797,9 +789,9 @@ grant_activity as Priya (neither):
         <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
         <span class="titletext">claude &mdash; Priya's session</span>
       </div>
-      <pre><span class="prompt">&gt; deny Liam's pending Legal grant: 178b1963-...</span>
+      <pre><span class="prompt">&gt; deny Oleg's pending Legal grant: 571a399a-...</span>
 
-    <span class="tool">&#9679; deny_access(grant_id: "178b1963-...")</span>
+    <span class="tool">&#9679; deny_access(grant_id: "571a399a-...")</span>
       <span class="err">&#10007; 403 "priya@robotinc.example does not own domain 'legal' in org 'robotinc'"</span></pre>
     </div>
 
@@ -808,22 +800,22 @@ grant_activity as Priya (neither):
         <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
         <span class="titletext">claude &mdash; Maya's session</span>
       </div>
-      <pre><span class="prompt">&gt; approve my own pending request: 178b1963-...</span>
+      <pre><span class="prompt">&gt; approve my own pending request: 571a399a-...</span>
 
-    <span class="tool">&#9679; approve_access(grant_id: "178b1963-...")</span>
+    <span class="tool">&#9679; approve_access(grant_id: "571a399a-...")</span>
       <span class="err">&#10007; 403 "maya@robotinc.example does not own domain 'legal' in org 'robotinc'"</span></pre>
     </div>
 
-    <p>That's the real <code>NotDomainOwnerError</code> text the code raises, verbatim. There's no field in the request either of them could fill in to dodge it, because the caller identity comes from the interceptor's own token resolution - never from anything the request itself supplies. Liam's own token is the one that actually succeeds, below. The approved grant sits in the real DynamoDB table, confirmed with a direct <code>scan</code> rather than just the API's own say-so.</p>
+    <p>That's the real <code>NotDomainOwnerError</code> text the code raises, verbatim. There's no field in the request either of them could fill in to dodge it, because the caller identity comes from the interceptor's own token resolution - never from anything the request itself supplies. Oleg's own token is the one that actually succeeds, below. The approved grant sits in the real DynamoDB table, confirmed with a direct <code>scan</code> rather than just the API's own say-so.</p>
 
     <figure class="shot">
-      <img src="images/dynamodb-audit-trail.jpg" alt="DynamoDB item explorer on the GrantsAuditTable showing two real rows for the same grant_id: a 'requested' event with actor empty and status pending, then an 'approved' event with actor liam@robotinc.example and status approved">
+      <img src="images/dynamodb-audit-trail.jpg" alt="DynamoDB item explorer on the GrantsAuditTable showing two real rows for the same grant_id: a 'requested' event with actor empty and status pending, then an 'approved' event with actor oleg@robotinc.example and status approved">
       <figcaption>The GrantsAuditTable after the round trip.</figcaption>
     </figure>
 
     <p>Meanwhile, the old shared <code>client_credentials</code> token (still fine for the other targets) is locked out of all of these tools entirely - they only work for a real person.</p>
 
-    <p>That's the actual demo: an approver, in their own Claude session, saying something like "approve Maya's pending request" - and having it actually work, because the tool is really there rather than stood in for. Liam's actual session looks like this:</p>
+    <p>That's the actual demo: an approver, in their own Claude session, saying something like "approve Maya's pending request" - and having it actually work, because the tool is really there rather than stood in for. Oleg's actual session looks like this:</p>
 
     <div class="terminal">
       <div class="titlebar">
@@ -840,14 +832,14 @@ grant_activity as Priya (neither):
 
     <span class="prompt">&gt; approve it</span>
 
-    <span class="tool">&#9679; approve_access(grant_id: "178b1963-...")</span>
-      <span class="ok">approved by liam@robotinc.example</span>
+    <span class="tool">&#9679; approve_access(grant_id: "571a399a-...")</span>
+      <span class="ok">approved by oleg@robotinc.example</span>
       <span class="dim">window closes in 2h</span></pre>
     </div>
 
     <h2 id="closing-the-loop">Closing the Loop (And Testing Jordan)</h2>
 
-    <p>That session only happens if Liam remembers to open it. A DynamoDB Streams trigger fires on every grant write (a request, an approval, a denial), ready to tell Liam something is waiting and to tell Maya what happened. The trigger is confirmed live. The Slack webhook it posts to was never configured, so today the nudge goes nowhere. It is a notification by design, not a second way to approve.</p>
+    <p>That session only happens if Oleg remembers to open it. A DynamoDB Streams trigger fires on every grant write (a request, an approval, a denial), ready to tell Oleg something is waiting and to tell Maya what happened. The trigger is confirmed live. The Slack webhook it posts to was never configured, so today the nudge goes nowhere. It is a notification by design, not a second way to approve.</p>
 
     <p>The stream is the useful part: Slack, Backstage, or whatever a team already uses can react to the same event without a new approval path.</p>
 
@@ -858,14 +850,14 @@ grant_activity as Priya (neither):
         <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
         <span class="titletext">claude &mdash; Jordan's session</span>
       </div>
-      <pre><span class="prompt">&gt; request access into engineering, reason "arm module calibration specs for Q3", 4 hours, and ask for the tools too</span>
+      <pre><span class="prompt">&gt; request access into engineering, reason "arm module calibration specs for Q3", 3 minutes, and ask for the tools too</span>
 
-    <span class="tool">&#9679; request_access(target_org: "robotinc", target_department: "engineering", reason: "arm module calibration specs for Q3", duration_hours: 4, include_tools: true)</span>
-      <span class="dim">grant_id: "fbc36a47-..."</span>
+    <span class="tool">&#9679; request_access(target_org: "robotinc", target_department: "engineering", reason: "arm module calibration specs for Q3", duration_hours: 0.05, include_tools: true)</span>
+      <span class="dim">grant_id: "e33eabfa-..."</span>
       <span class="dim">status: pending</span></pre>
     </div>
 
-    <p>And in Maya's, minutes later - Engineering's real owner, approving someone with no department claim at all:</p>
+    <p>And in Maya's, moments later - Engineering's real owner, approving someone with no department claim at all:</p>
 
     <div class="terminal">
       <div class="titlebar">
@@ -878,20 +870,18 @@ grant_activity as Priya (neither):
       <span class="dim">1 pending request</span>
       - jordan@contractor.example -&gt; Engineering
         "arm module calibration specs for Q3"
-        <span class="dim">requested 4m ago</span>
+        <span class="dim">requested moments ago</span>
 
     <span class="prompt">&gt; approve it</span>
 
-    <span class="tool">&#9679; approve_access(grant_id: "fbc36a47-...")</span>
+    <span class="tool">&#9679; approve_access(grant_id: "e33eabfa-...")</span>
       <span class="ok">approved by maya@robotinc.example</span>
-      <span class="dim">window closes in 4h</span></pre>
+      <span class="dim">window closes in 3m</span></pre>
     </div>
 
     <p>Just a narrower starting point - nothing in <code>GrantStore</code>, Cedar, or the tools knows or cares that Jordan isn't an employee.</p>
 
-    <h2 id="what-a-caller-gets">What a Caller Actually Gets</h2>
-
-    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active:</p>
+    <p>A reader should not have to take this post's word for what that grant unlocked. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active:</p>
 
     <div class="terminal">
       <div class="titlebar">
@@ -909,11 +899,11 @@ grant_activity as Priya (neither):
           "static_namespaces": ["org_robotinc_user_jordan_at_contractor_dot_example"],
           "published_namespace": "org_robotinc_published",
           "granted_namespaces": [
-            {"namespace": "org_robotinc_dept_engineering", "expires_at": "2026-11-23T15:18:05+00:00"}
+            {"namespace": "org_robotinc_dept_engineering", "expires_at": "2026-11-23T18:07:22+00:00"}
           ]
         },
         <span class="ok">"domain_tools": ["check_shipping_classification", "generate_packaging_manifest", "query_firmware_specs"],</span>
-        "live_gateway_tools": { ... }
+        "live_gateway_tools": {"EngineeringTools___check_shipping_classification": "refused for you - a Cedar policy keeps it for Engineering, and your department is not set. A grant does not change this: the policy looks at department only"}
       }</pre>
     </div>
 
@@ -933,23 +923,23 @@ grant_activity as Priya (neither):
         "department": null,
         "memory": {"static_namespaces": ["org_robotinc_user_jordan_at_contractor_dot_example"], "published_namespace": "org_robotinc_published", "granted_namespaces": []},
         <span class="err">"domain_tools": [],</span>
-        "live_gateway_tools": { ... }
+        "live_gateway_tools": {"EngineeringTools___check_shipping_classification": "refused for you - a Cedar policy keeps it for Engineering, and your department is not set. A grant does not change this: the policy looks at department only"}
       }</pre>
     </div>
 
     <p>Nothing was re-issued and nobody signed in again. The three Engineering tools and the Memory namespace went away together when the window closed, because <code>allowed_tools()</code> and <code>GuardedMemory</code> read the same grant.</p>
 
-    <p>The last field, trimmed here, is <code>whoami</code> being honest about the one real Gateway tool. When these were captured it said the department gate blocked nobody. Today it says "Engineering only", because today that's true.</p>
+    <p>The last field, shown in full here rather than trimmed, is <code>whoami</code> being honest about the one real Gateway tool: refused for Jordan both before and after his grant, because the gate looks at department and a grant doesn't add one.</p>
 
     <h2 id="what-agentcore-ships">Why Not AgentCore's Own Time-Aware Policies?</h2>
 
     <p>The obvious question about all of the above is whether AgentCore already handles time-boxed access, with no custom grant table. It comes close: AWS ships <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html">Dogwood</a>, a policy language that extends Cedar's authorization model with stateful, session-aware conditions, so a policy can reason over what happened earlier in a session (<a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal-authoring.html">authoring guide</a>; good background on the policy-session mechanics in <a href="https://sph.sh/en/posts/dogwood-temporal-policy-language/">sph.sh's writeup</a> and a practical walkthrough at <a href="https://subagentic.ai/howtos/how-to-write-your-first-temporal-policy-agentcore-dogwood/">subagentic.ai</a>).</p>
 
-    <p>The limit is whose history a policy can see. A policy looks at one session, and on a Gateway that authenticates its callers a session belongs to one caller. AWS's <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-session-based-temporal.html">documentation</a> says: "Two different callers supplying the same session ID get isolated sessions &mdash; the identity is part of the session key." So a policy that runs on Maya's request sees what Maya did earlier in her session, and nothing that Liam did in his.</p>
+    <p>The limit is whose history a policy can see. A policy looks at one session, and on a Gateway that authenticates its callers a session belongs to one caller. AWS's <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-session-based-temporal.html">documentation</a> says: "Two different callers supplying the same session ID get isolated sessions &mdash; the identity is part of the session key." So a policy that runs on Maya's request sees what Maya did earlier in her session, and nothing that Oleg did in his.</p>
 
     <ul>
     <li>What it can check: "Did Maya call RunTests before calling Deploy?" One person, one session. AWS's own examples are of this kind, including "require an approval before a payout", where the approval and the payout are two calls in the same session.</li>
-    <li>What it cannot see: "Did Liam approve a grant for Maya?" Two people, two sessions.</li>
+    <li>What it cannot see: "Did Oleg approve a grant for Maya?" Two people, two sessions.</li>
     </ul>
 
     <p>A grant is a handshake between two people: one asks and another approves, often hours apart. The approval has to be stored somewhere that outlives both sessions and that both people's requests can reach. That is a table, not a session history.</p>
@@ -981,6 +971,22 @@ grant_activity as Priya (neither):
     <li><strong>Say what does not hold.</strong> The Cedar department gate didn't, for a while - the tool's own description said so, to every caller, until it was fixed. The honest version of that right now: the agent is built and deployed, but this account's own AWS Organization blocks it from calling any Claude model, so nobody has had a conversation with it yet.</li>
     </ol>
 
+    <h2 id="staleness-risk">One Open Risk: Staleness Between Writes</h2>
+
+    <p>One gap stays open, named rather than buried in a footnote: <strong>memory is only as fresh as the last explicit write.</strong> A fact like <em>"Supplier X is banned under export control 7A994"</em> sits in Memory because an agent called <code>memory_write</code> the moment it was true. Nothing here tails an upstream system of record, and nothing notices or re-asserts it if the real classification changes later. The 31-day record expiry forces old facts to eventually drop out, but expiry isn't a correction.</p>
+
+    <p>Published facts make this sharper, not softer. A published fact is trusted more, is read by more people, and today cannot be withdrawn or replaced. AWS's own guidance draws the line here: long-term memory is for what happened in past sessions, not for an authoritative, volatile system of record - that belongs in a Knowledge Base or a live tool call. Closing the gap on what's already in Memory is straightforward: expose <code>DeleteMemoryRecord</code> and <code>BatchUpdateMemoryRecords</code> to a domain owner, so a published fact can be retracted or replaced, or drive those same calls from an upstream EventBridge stream. Access is time-boxed today; knowledge is not. That is the next thing to build.</p>
+
+    <h2 id="bet-on-the-pattern">Bet on the Pattern, Not the Platform</h2>
+
+    <p>Everything else here you can verify yourself. In November 2026, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a> - solving runtime ingress rather than cross-domain memory grants, yet landing on the exact same primitive: a request interceptor extracting verified identity ahead of Cedar policy enforcement. Two teams converging on the same architecture independently is what happens once identity propagation is taken seriously.</p>
+
+    <p>That matters because this stack moves fast. AgentCore only hit <a href="https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-agentcore-available">general availability</a> in October 2025, and the original Bedrock Agents service <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html">closed to new customers</a> under ten months later. Nothing in <code>memory-visa</code> bets on any single managed runtime staying put: OAuth and MCP are open standards and Cedar is open source; they outlive any one vendor's SDK. When the underlying runtime inevitably shifts again, the part that survives is the pattern - identity taken from the verified token, an entitlements layer for exceptions on top of static isolation, and short-lived credentials that the platform scopes for each read. Swap the gateway, let every department pick its own agent framework, and the boundary model still holds.</p>
+
+    <p>Clone the repo, run <code>make eval</code>, and try to break it: request access as someone who shouldn't get it, approve your own request, replay a token after its window closes. If anything gets through that shouldn't, that's a real issue. Go fix it.</p>
+
+    <p>Maya still gets her three days. She just doesn't spend any of them waiting on a ticket.</p>
+
     <h2 id="quickstart">Quickstart</h2>
 
     <p><strong>Without an AWS account.</strong> The test suite runs offline: 113 tests, built around six properties (cross-org isolation, silos inside one org, the legitimate cross-team flow, credential scrubbing, the grant lifecycle for an employee, and the same for a contractor). You need Python 3.10 or later.</p>
@@ -1009,19 +1015,19 @@ cd cdk &amp;&amp; pip install -r requirements.txt
 npx cdk deploy --all --require-approval never -c orchestratorImageDigest=$DIGEST
 cd ..</code></pre>
 
-    <p>3. Give Maya and Liam a password, sign in as each, and define one helper. The stack writes its own addresses to Parameter Store. The password is yours; it is never written to the template or the repository. A token lasts one hour.</p>
+    <p>3. Give Maya and Oleg a password, sign in as each, and define one helper. The stack writes its own addresses to Parameter Store. The password is yours; it is never written to the template or the repository. A token lasts one hour.</p>
 
     <pre><code>USER_POOL_ID=$(aws ssm get-parameter --name /memory-visa/user-pool-id --query Parameter.Value --output text)
 USER_CLIENT_ID=$(aws ssm get-parameter --name /memory-visa/user-client-id --query Parameter.Value --output text)
 GATEWAY_URL=$(aws ssm get-parameter --name /memory-visa/gateway-url --query Parameter.Value --output text)
 
-for u in maya liam; do
+for u in maya oleg; do
   aws cognito-idp admin-set-user-password --user-pool-id "$USER_POOL_ID" --username $u --password '&lt;password&gt;' --permanent
 done
 
 token() { aws cognito-idp initiate-auth --client-id "$USER_CLIENT_ID" --auth-flow USER_PASSWORD_AUTH \
   --auth-parameters USERNAME=$1,PASSWORD='&lt;password&gt;' --query AuthenticationResult.AccessToken --output text; }
-MAYA=$(token maya); LIAM=$(token liam)
+MAYA=$(token maya); OLEG=$(token oleg)
 
 # call &lt;token&gt; &lt;tool&gt; '&lt;json arguments&gt;'
 call() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" \
@@ -1029,25 +1035,25 @@ call() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" \
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"AccessRequestTools___$2\",\"arguments\":$3}}" \
   | sed -n 's/^data: //p' | jq '.result // .error'; }</code></pre>
 
-    <p>4. The visa, end to end. Liam writes a fact, Maya is refused, Maya asks, Liam approves, Maya reads, the window closes:</p>
+    <p>4. The visa, end to end. Oleg writes a fact, Maya is refused, Maya asks, Oleg approves, Maya reads, the window closes:</p>
 
-    <pre><code>call "$LIAM" memory_write '{"namespace":"org_robotinc_dept_legal","text":"The X-7 battery pack is classified under export control code 7A994."}'
+    <pre><code>call "$OLEG" memory_write '{"namespace":"org_robotinc_dept_legal","text":"The X-7 battery pack is classified under export control code 7A994."}'
 sleep 90     # long-term memory is extracted in the background
 call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # 403
 
 call "$MAYA" request_access '{"target_org":"robotinc","target_department":"legal","reason":"Classification for the X-7 before the Q4 shipment.","duration_hours":0.05}'
-call "$LIAM" list_pending '{}'
-call "$LIAM" approve_access '{"grant_id":"&lt;grant_id from the request&gt;"}'
+call "$OLEG" list_pending '{}'
+call "$OLEG" approve_access '{"grant_id":"&lt;grant_id from the request&gt;"}'
 
 call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # the fact
 call "$MAYA" memory_write '{"namespace":"org_robotinc_dept_legal","text":"Supplier X is cleared."}'   # 403: a grant never writes
-call "$LIAM" grant_activity '{"grant_id":"&lt;grant_id&gt;"}'                                               # what Maya did with it
+call "$OLEG" grant_activity '{"grant_id":"&lt;grant_id&gt;"}'                                               # what Maya did with it
 sleep 200    # the window was three minutes
 call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # 403 again</code></pre>
 
     <p>5. A published fact, and one search across everything Maya may read:</p>
 
-    <pre><code>call "$LIAM" publish_fact '{"department":"legal","text":"The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal."}'
+    <pre><code>call "$OLEG" publish_fact '{"department":"legal","text":"The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal."}'
 call "$MAYA" memory_search '{"query":"X-7 classification"}'      # no namespace, no grant</code></pre>
 
     <p>6. The two proofs that AWS enforces the boundary. It needs your own role in the visa role's trust policy, so deploy once more with <code>-c visaDemoPrincipalArn=&lt;your role ARN&gt;</code>, then:</p>
@@ -1060,27 +1066,11 @@ python3 demo/publish_boundary_demo.py     # IAM refuses a direct write outside a
 
     <p>To use an AI client and not <code>curl</code>, give it the Gateway's <code>/mcp</code> address and Maya's token as the bearer token. <code>tools/list</code> then shows the ten tools: <code>request_access</code>, <code>list_pending</code>, <code>approve_access</code>, <code>deny_access</code>, <code>revoke_access</code>, <code>whoami</code>, <code>memory_search</code>, <code>memory_write</code>, <code>grant_activity</code> and <code>publish_fact</code>.</p>
 
-    <p>One shell note. A tool's result is JSON inside a JSON string, so its quotes are escaped twice. If you capture a response in a variable, print it with <code>printf '%s'</code> and not zsh's <code>echo</code>, which removes one level of backslashes and makes a valid response look broken. The <code>call</code> helper pipes straight into <code>jq</code>, which avoids it.</p>
+    <aside class="note"><strong>Shell:</strong> a tool's result is JSON inside a JSON string, double-escaped. Print a captured response with <code>printf '%s'</code>, not zsh's <code>echo</code> - it drops a backslash level and makes valid JSON look broken. The <code>call</code> helper above pipes straight into <code>jq</code>, so this won't bite you there.</aside>
 
-    <p>A static token, deliberately. Cognito fully supports the cleaner OAuth <code>authorization_code</code> flow here, but Claude Code has a <a href="https://github.com/anthropics/claude-code/issues/90190">reported issue</a> (closed without a fix when this was written) where it omits the <code>scope</code> parameter when a protected resource's metadata advertises no scopes (AgentCore Gateway always advertises none), which Cognito rejects with <code>invalid_grant</code> on every token exchange. Not ours to fix - the static token sidesteps it entirely.</p>
+    <aside class="note"><strong>Why a static token, not OAuth:</strong> Cognito supports <code>authorization_code</code> fine, but Claude Code has a <a href="https://github.com/anthropics/claude-code/issues/90190">reported issue</a> - it omits <code>scope</code> when a resource advertises none, which AgentCore Gateway always does, so Cognito rejects every exchange with <code>invalid_grant</code>. Not ours to fix; the static token sidesteps it.</aside>
 
-    <p>This is built to show a pattern, not to carry production traffic. The limits that would matter first: every read scans the grants table; domain owners are a constant in the code, not a directory lookup; every tool call asks Cognito who the caller is; a search across four namespaces takes two to four seconds; and the tables have no point-in-time recovery. The Gateway's per-request traces (Cedar decisions, interceptor runs, Lambda invocations) are a separate opt-in, CloudWatch Transaction Search, billed on span ingestion.</p>
-
-    <h2 id="staleness-risk">One Open Risk: Staleness Between Writes</h2>
-
-    <p>One gap stays open, named rather than buried in a footnote: <strong>memory is only as fresh as the last explicit write.</strong> A fact like <em>"Supplier X is banned under export control 7A994"</em> sits in Memory because an agent called <code>put()</code> the moment it was true. Nothing here tails an upstream system of record, and nothing notices or re-asserts it if the real classification changes later. The 31-day record expiry forces old facts to eventually drop out, but expiry isn't a correction.</p>
-
-    <p>Published facts make this sharper, not softer. A published fact is trusted more, is read by more people, and today cannot be withdrawn or replaced. Access is time-boxed here; knowledge is not. That is the next thing to build.</p>
-
-    <h2 id="bet-on-the-pattern">Bet on the Pattern, Not the Platform</h2>
-
-    <p>Everything else here you can verify yourself. In November 2026, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a> - solving runtime ingress rather than cross-domain memory grants, yet landing on the exact same primitive: a request interceptor extracting verified identity ahead of Cedar policy enforcement. Two teams converging on the same architecture independently is what happens once identity propagation is taken seriously.</p>
-
-    <p>That matters because this stack moves fast. AgentCore only hit <a href="https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-agentcore-available">general availability</a> in October 2025, and the original Bedrock Agents service <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html">closed to new customers</a> under ten months later. Nothing in <code>memory-visa</code> bets on any single managed runtime staying put: OAuth and MCP are open standards and Cedar is open source; they outlive any one vendor's SDK. When the underlying runtime inevitably shifts again, the part that survives is the pattern - identity taken from the verified token, an entitlements layer for exceptions on top of static isolation, and short-lived credentials that the platform scopes for each read. Swap the gateway, let every department pick its own agent framework, and the boundary model still holds.</p>
-
-    <p>Clone the repo, run <code>make eval</code>, and try to break it: request access as someone who shouldn't get it, approve your own request, replay a token after its window closes. If anything gets through that shouldn't, that's a real issue. Go fix it.</p>
-
-    <p>Maya still gets her three days. She just doesn't spend any of them waiting on a ticket.</p>
+    <aside class="note"><strong>Not production-shaped:</strong> grant reads scan the whole table, domain owners are a code constant not a directory lookup, every call asks Cognito who's calling, a four-namespace search takes 2-4 seconds, and the tables have no point-in-time recovery. Per-request traces are a separate opt-in (CloudWatch Transaction Search, billed on span ingestion).</aside>
 
     <h2 id="glossary">Glossary</h2>
 

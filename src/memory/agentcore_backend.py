@@ -91,7 +91,7 @@ def _record(summary: dict) -> dict:
 
 
 def _plain_metadata(metadata) -> dict | None:
-    """{"published_by": {"stringValue": "liam@..."}} becomes {"published_by": "liam@..."}."""
+    """{"published_by": {"stringValue": "oleg@..."}} becomes {"published_by": "oleg@..."}."""
     if not metadata:
         return None
     plain = {}
