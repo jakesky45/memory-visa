@@ -38,6 +38,7 @@ import json
 import os
 
 from agents.access_requests import (
+    InvalidRequestError,
     NotDomainOwnerError,
     approve_request,
     deny_request,
@@ -46,7 +47,7 @@ from agents.access_requests import (
     revoke_request,
 )
 from agents.domain_config import allowed_tools
-from memory.grants import GrantNotFoundError
+from memory.grants import GrantNotFoundError, InvalidTransitionError
 from memory.grants_dynamodb import DynamoGrantStore
 from memory.guarded_memory import UserClaims, requester_namespace, static_namespaces
 
@@ -95,7 +96,12 @@ def _grant_to_dict(grant) -> dict:
 
 
 def _request_access(args: dict) -> dict:
-    requester = UserClaims(email=_verified_email(args), org=args["requester_org"])
+    # The org is the caller's own, from the verified token - never an argument. A
+    # requester_org argument, if a client still sends one, is ignored.
+    org = args.get("_verified_org")
+    if not org:
+        raise UnverifiedCallerError("no verified org on this call - the caller's account has no org attribute")
+    requester = UserClaims(email=_verified_email(args), org=org)
     grant = request_cross_domain_access(
         _grants,
         requester,
@@ -195,6 +201,10 @@ def handler(event, context):
         result = fn(event)
     except KeyError as exc:
         return {"statusCode": 400, "body": json.dumps({"error": f"missing required field: {exc}"})}
+    except InvalidRequestError as exc:
+        return {"statusCode": 400, "body": json.dumps({"error": str(exc)})}
+    except InvalidTransitionError as exc:
+        return {"statusCode": 409, "body": json.dumps({"error": str(exc)})}
     except (NotDomainOwnerError, UnverifiedCallerError) as exc:
         return {"statusCode": 403, "body": json.dumps({"error": str(exc)})}
     except GrantNotFoundError as exc:

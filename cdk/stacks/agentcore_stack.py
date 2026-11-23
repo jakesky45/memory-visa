@@ -513,13 +513,12 @@ class AgentCoreStack(Stack):
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "requester_org": {"type": "string"},
                         "target_org": {"type": "string"},
                         "target_department": {"type": "string"},
                         "reason": {"type": "string"},
                         "duration_hours": {"type": "number"},
                     },
-                    "required": ["requester_org", "target_org", "target_department", "reason", "duration_hours"],
+                    "required": ["target_org", "target_department", "reason", "duration_hours"],
                 },
             ),
             agentcore.CfnGatewayTarget.ToolDefinitionProperty(

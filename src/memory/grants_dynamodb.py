@@ -18,9 +18,10 @@ from __future__ import annotations
 import datetime as dt
 
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Attr, Key
+from botocore.exceptions import ClientError
 
-from .grants import Grant, GrantNotFoundError, GrantStatus
+from .grants import Grant, GrantNotFoundError, GrantStatus, InvalidTransitionError, check_transition
 
 
 def _to_item(grant: Grant) -> dict:
@@ -70,6 +71,16 @@ class DynamoGrantStore:
             }
         )
 
+    def _transition(self, grant: Grant, was: GrantStatus) -> None:
+        """Write the grant only if its status is still what this caller read. Two calls
+        that race (an approve and a deny, or two approves) cannot both succeed."""
+        try:
+            self._table.put_item(Item=_to_item(grant), ConditionExpression=Attr("status").eq(was.value))
+        except ClientError as error:
+            if error.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise InvalidTransitionError(f"grant {grant.grant_id} changed while this call was in progress") from None
+            raise
+
     def request(self, grant: Grant) -> Grant:
         self._table.put_item(Item=_to_item(grant))
         self._record("requested", grant, grant.requested_at)
@@ -77,26 +88,32 @@ class DynamoGrantStore:
 
     def approve(self, grant_id: str, approved_by: str, now: dt.datetime) -> Grant:
         grant = self.get(grant_id)
+        check_transition(grant, "approve", now)
+        was = grant.status
         grant.status = GrantStatus.APPROVED
         grant.approved_by = approved_by
         grant.approved_at = now
-        self._table.put_item(Item=_to_item(grant))
+        self._transition(grant, was)
         self._record("approved", grant, now)
         return grant
 
     def deny(self, grant_id: str, denied_by: str, now: dt.datetime) -> Grant:
         grant = self.get(grant_id)
+        check_transition(grant, "deny", now)
+        was = grant.status
         grant.status = GrantStatus.DENIED
         grant.approved_by = denied_by
-        self._table.put_item(Item=_to_item(grant))
+        self._transition(grant, was)
         self._record("denied", grant, now)
         return grant
 
     def revoke(self, grant_id: str, revoked_by: str, now: dt.datetime) -> Grant:
         grant = self.get(grant_id)
+        check_transition(grant, "revoke", now)
+        was = grant.status
         grant.status = GrantStatus.REVOKED
         grant.approved_by = revoked_by
-        self._table.put_item(Item=_to_item(grant))
+        self._transition(grant, was)
         self._record("revoked", grant, now)
         return grant
 

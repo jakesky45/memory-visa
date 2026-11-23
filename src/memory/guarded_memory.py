@@ -93,7 +93,13 @@ class GuardedMemory:
         )
 
     def put(self, claims: UserClaims, namespace: str, text: str, now: dt.datetime) -> dict:
-        self._check(claims, namespace, now)
+        # A grant is read-only. Only a member writes into a namespace: a visitor who could
+        # write would be putting their words into the owner's memory, for the owner's
+        # own agents to read back as the owner's knowledge.
+        if self._authorising_grant(claims, namespace, now) is not None:
+            raise PermissionError(
+                f"{claims.email} may read namespace '{namespace}' under a grant, but a grant never allows a write"
+            )
         sanitized = self._apply_guardrail(text)
         return self._memory.put(namespace, sanitized)
 

@@ -20,6 +20,7 @@ import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from agents.access_requests import (
+    InvalidRequestError,
     NotDomainOwnerError,
     approve_request,
     deny_request,
@@ -27,6 +28,7 @@ from agents.access_requests import (
     request_cross_domain_access,
 )
 from memory.agentcore_backend import AgentCoreMemoryBackend
+from memory.grants import InvalidTransitionError
 from memory.grants_dynamodb import DynamoGrantStore
 from memory.guarded_memory import GuardedMemory, PermissionError as GuardedMemoryPermissionError, UserClaims
 from memory.visa_credentials import VisaIssuer
@@ -145,6 +147,10 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(403, {"ok": False, "error": str(exc)})
         except KeyError as exc:
             self._respond(400, {"ok": False, "error": f"missing required field: {exc}"})
+        except InvalidRequestError as exc:
+            self._respond(400, {"ok": False, "error": str(exc)})
+        except InvalidTransitionError as exc:
+            self._respond(409, {"ok": False, "error": str(exc)})
         except Exception as exc:  # noqa: BLE001 - deliberately broad: an
             # unhandled exception here must still produce an HTTP response.
             # Letting it propagate out of do_POST crashes the single-threaded

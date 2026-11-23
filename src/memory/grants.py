@@ -50,6 +50,30 @@ class GrantNotFoundError(Exception):
     pass
 
 
+class InvalidTransitionError(Exception):
+    """The grant is not in a state this action may be taken from."""
+
+
+# A grant moves forward only. Each decision is made once: an expired, denied or revoked
+# grant is finished, and a new window needs a new request with its own reason.
+#
+#   pending  -> approved | denied | revoked
+#   approved -> revoked (while the window is open) | expired
+_FROM = {
+    "approve": {GrantStatus.PENDING},
+    "deny": {GrantStatus.PENDING},
+    "revoke": {GrantStatus.PENDING, GrantStatus.APPROVED},
+}
+
+
+def check_transition(grant: Grant, action: str, now: dt.datetime) -> None:
+    """Raise InvalidTransitionError unless `action` may be taken on `grant` now."""
+    if grant.status not in _FROM[action]:
+        raise InvalidTransitionError(f"cannot {action} grant {grant.grant_id}: it is {grant.status.value}")
+    if action == "revoke" and grant.is_expired(now):
+        raise InvalidTransitionError(f"cannot revoke grant {grant.grant_id}: its window has already closed")
+
+
 class GrantStore:
     """Grant storage and the audit trail of every state transition.
 
@@ -81,6 +105,7 @@ class GrantStore:
 
     def approve(self, grant_id: str, approved_by: str, now: dt.datetime) -> Grant:
         grant = self._get(grant_id)
+        check_transition(grant, "approve", now)
         grant.status = GrantStatus.APPROVED
         grant.approved_by = approved_by
         grant.approved_at = now
@@ -89,6 +114,7 @@ class GrantStore:
 
     def deny(self, grant_id: str, denied_by: str, now: dt.datetime) -> Grant:
         grant = self._get(grant_id)
+        check_transition(grant, "deny", now)
         grant.status = GrantStatus.DENIED
         grant.approved_by = denied_by
         self._record("denied", grant, now)
@@ -96,6 +122,7 @@ class GrantStore:
 
     def revoke(self, grant_id: str, revoked_by: str, now: dt.datetime) -> Grant:
         grant = self._get(grant_id)
+        check_transition(grant, "revoke", now)
         grant.status = GrantStatus.REVOKED
         grant.approved_by = revoked_by
         self._record("revoked", grant, now)

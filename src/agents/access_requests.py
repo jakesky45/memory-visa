@@ -19,6 +19,15 @@ class NotDomainOwnerError(Exception):
     pass
 
 
+class InvalidRequestError(Exception):
+    pass
+
+
+# The longest window a grant may ask for. A visa is for a task, not a posting: anything
+# longer is a change to someone's standing access, which belongs in the identity provider.
+MAX_GRANT_DURATION = dt.timedelta(hours=24)
+
+
 def request_cross_domain_access(
     grants: GrantStore,
     requester: UserClaims,
@@ -29,6 +38,11 @@ def request_cross_domain_access(
     now: dt.datetime,
 ) -> Grant:
     """Called by the requester's agent after a PermissionError on that namespace."""
+    if not reason or not reason.strip():
+        raise InvalidRequestError("a request needs a reason: the owner approves the reason, not just the name")
+    if duration <= dt.timedelta(0) or duration > MAX_GRANT_DURATION:
+        hours = MAX_GRANT_DURATION.total_seconds() / 3600
+        raise InvalidRequestError(f"duration must be more than zero and at most {hours:g} hours")
     target_namespace = f"org_{target_org}_dept_{target_department}"
     grant = Grant(
         grant_id=str(uuid.uuid4()),
