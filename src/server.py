@@ -19,6 +19,8 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+import boto3
+
 from agents.access_requests import (
     InvalidRequestError,
     NotDomainOwnerError,
@@ -39,13 +41,35 @@ GRANTS_TABLE = os.environ.get("GRANTS_TABLE_NAME", "")
 GRANTS_AUDIT_TABLE = os.environ.get("GRANTS_AUDIT_TABLE_NAME", "")
 VISA_ROLE_ARN = os.environ.get("VISA_ROLE_ARN", "")
 MEMORY_ARN = os.environ.get("MEMORY_ARN", "")
+GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "")
+GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "DRAFT")
 
 # Same DynamoDB-backed store the tier-two MCP tools (AccessRequestTools) read
 # and write - not a second, disconnected in-process one. A grant Liam
 # approves through his own Claude session is the same grant this orchestrator
 # checks before letting Maya's retrieve through.
 _grants = DynamoGrantStore(GRANTS_TABLE, GRANTS_AUDIT_TABLE, region=REGION) if GRANTS_TABLE else None
-_apply_guardrail = lambda text: text  # the Bedrock Guardrail attaches at the model-invocation layer, not here
+_bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION) if GUARDRAIL_ID else None
+
+
+def _apply_guardrail(text: str) -> str:
+    """Runs a write through the real Bedrock Guardrail (ANONYMIZE, not BLOCK -
+    see guardrails_stack.py) before it reaches Memory. Previously a no-op:
+    nothing called this, so a pasted secret was stored as written despite the
+    Guardrail existing in the stack. Falls back to the raw text if no
+    guardrail is configured, rather than refusing the write outright."""
+    if _bedrock_runtime is None:
+        return text
+    response = _bedrock_runtime.apply_guardrail(
+        guardrailIdentifier=GUARDRAIL_ID,
+        guardrailVersion=GUARDRAIL_VERSION,
+        source="INPUT",
+        content=[{"text": {"text": text}}],
+    )
+    if response.get("action") != "GUARDRAIL_INTERVENED":
+        return text
+    redacted = "".join(output.get("text", "") for output in response.get("outputs", []))
+    return redacted or text
 # Reads of long-term memory go through a visa: credentials AWS limits to one namespace
 # until the grant ends (memory/visa_credentials.py). Without the role, reads use this
 # process's own role, as before.

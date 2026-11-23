@@ -109,7 +109,7 @@ permit (
 
 
 class AgentCoreStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, vpc, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, vpc, guardrail_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # A real, minimal identity provider - the Cedar policy's
@@ -783,6 +783,20 @@ class AgentCoreStack(Stack):
         self.grants_table.grant_read_write_data(self.runtime_role)
         self.grants_audit_table.grant_read_write_data(self.runtime_role)
 
+        # The Guardrail the stack docstring already promised but never actually
+        # wired up - server.py's _apply_guardrail was a no-op lambda with
+        # nothing behind it. DRAFT is the only version that exists: the
+        # GuardrailsStack creates the CfnGuardrail resource but no
+        # CfnGuardrailVersion, so there's nothing to publish a numbered
+        # version from yet.
+        guardrail_arn = f"arn:aws:bedrock:{self.region}:{self.account}:guardrail/{guardrail_id}"
+        self.runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:ApplyGuardrail"],
+                resources=[guardrail_arn],
+            )
+        )
+
         # No VPC/security group for the Runtime - see the network_mode="PUBLIC"
         # comment below for why. A security-group ingress rule was tried first
         # and didn't fix the 502, which is itself useful evidence: it pointed
@@ -800,6 +814,8 @@ class AgentCoreStack(Stack):
                 "VISA_ROLE_ARN": self.visa_role.role_arn,
                 "GRANTS_TABLE_NAME": self.grants_table.table_name,
                 "GRANTS_AUDIT_TABLE_NAME": self.grants_audit_table.table_name,
+                "GUARDRAIL_ID": guardrail_id,
+                "GUARDRAIL_VERSION": "DRAFT",
             },
             agent_runtime_artifact=agentcore.CfnRuntime.AgentRuntimeArtifactProperty(
                 container_configuration=agentcore.CfnRuntime.ContainerConfigurationProperty(

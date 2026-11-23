@@ -16,7 +16,14 @@ env = cdk.Environment(account=os.environ["CDK_DEFAULT_ACCOUNT"], region="eu-west
 
 network = NetworkStack(app, "MemoryVisaNetwork", env=env)
 guardrails = GuardrailsStack(app, "MemoryVisaGuardrails", env=env)
-agentcore = AgentCoreStack(app, "MemoryVisaAgentCore", vpc=network.vpc, env=env)
+agentcore = AgentCoreStack(
+    app,
+    "MemoryVisaAgentCore",
+    vpc=network.vpc,
+    guardrail_id=guardrails.guardrail.attr_guardrail_id,
+    env=env,
+)
 agentcore.add_stack_dependency(network)
+agentcore.add_stack_dependency(guardrails)
 
 app.synth()

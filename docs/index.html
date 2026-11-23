@@ -494,7 +494,7 @@
     <tr><th>Term</th><th>What it is</th></tr>
     <tr><td><strong>Bedrock AgentCore</strong></td><td>AWS's managed runtime for AI agents. A <strong>Gateway</strong> fronts your tools behind one authenticated endpoint; <strong>Memory</strong> holds agent memory, namespaced per tenant, in two tiers - <strong>short-term</strong> (the raw event, written and readable immediately) and <strong>long-term</strong> (facts automatically extracted from short-term memory by a background process, searchable only once that extraction finishes); a <strong>Policy Engine</strong> evaluates access rules before a request reaches your code at all.</td></tr>
     <tr><td><strong>Cedar</strong></td><td>The policy language AWS open-sourced for exactly this - <code>permit</code>/<code>forbid</code> statements over principal, action, and resource, default-deny, evaluated by the Policy Engine.</td></tr>
-    <tr><td><strong>Cognito</strong></td><td>The identity provider. Every caller authenticates here first; org and department claims ride along as JWT claims, which Cedar reads as tags on the principal, not plain attributes.</td></tr>
+    <tr><td><strong>Cognito</strong></td><td>The identity provider. Every caller authenticates here first; org and department claims can ride along as JWT claims for Cedar to read as tags on the principal - though as the <code>EngineeringTools</code> gate below shows, the access tokens this project's Gateway actually validates don't carry them, so that path never fires here.</td></tr>
     <tr><td><strong>MCP (Model Context Protocol)</strong></td><td>The open protocol an AI client uses to discover and call tools. <code>tools/list</code> says what's callable; <code>tools/call</code> invokes one. Client-agnostic by design - that's what makes bring-your-own-client possible at all.</td></tr>
     <tr><td><strong>Gateway Target</strong></td><td>What the Gateway actually forwards a call to - a Lambda function, an HTTP endpoint, or another AgentCore Runtime. A target's real tools are what Cedar's own schema validates actions against.</td></tr>
     </table>
@@ -545,7 +545,7 @@
 
     <h2 id="what-a-grant-unlocks">What a Grant Actually Unlocks (And a Bug We Caught Testing It)</h2>
 
-    <p>Scoped precisely: what a grant opens today is Memory - <code>put</code>/<code>retrieve</code> into the target namespace, nothing more. Robotinc also has one real department-scoped tool behind the Gateway, Engineering's <code>check_shipping_classification</code> (a stub that looks up a shipment's export-control status). Testing it live turned up a real bug, not just a gap:</p>
+    <p>Scoped precisely: for Memory, a grant is read-only - <code>retrieve</code> into the target namespace, never <code>put</code>. A grant is never a license to write into someone else's domain as if you were a member of it; only a member writes into a namespace. It does still carry the target domain's whole toolset alongside that read access, which is a separate, broader thing - more on that below. Robotinc also has one real department-scoped tool behind the Gateway, Engineering's <code>check_shipping_classification</code> (a stub that looks up a shipment's export-control status). Testing it live turned up a real bug, not just a gap:</p>
 
     <ol>
     <li>A Cedar policy exists to gate it by the caller's <code>department</code> tag, but it was sitting in <code>LOG_ONLY</code> mode - evaluating and logging, never actually blocking anyone.</li>

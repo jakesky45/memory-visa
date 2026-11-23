@@ -30,7 +30,7 @@ Deployed in the sandbox account, `eu-west-2`:
 | Resource | Status | Notes |
 |---|---|---|
 | VPC + flow logs | live | |
-| Bedrock Guardrail | live | regex secret redaction + PII |
+| Bedrock Guardrail | resource live, call path not yet deployed | the regex rules redact (ANONYMIZE), not block - but nothing in `server.py` actually called `ApplyGuardrail` until this was caught; now wired up in code (IAM permission, env vars, real API call), not yet deployed or verified against AWS |
 | Cognito pool + domain | live | custom `department`/`org` claims, both OAuth flows configured |
 | AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` kept at `LOG_ONLY` (see below) |
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth; `IdentityInterceptor` resolves real Cognito identity before every tool call |
