@@ -55,8 +55,8 @@ findings, one fixed in code, one not ours to fix.
 
 | # | Severity | Finding | Fix |
 |---|---|---|---|
-| U6 | High | **`GatewayClient` could never have authenticated a real person.** The Gateway's `IdentityInterceptor` only resolves the caller's verified identity over HTTP/2. The exact same token, same headers, same body, over HTTP/1.1, comes back `403 "no verified identity on this call - ... not the shared service credential"`. `urllib` (what the client was built on) cannot speak HTTP/2 at all - confirmed with `curl --http1.1` against `--http2` on an otherwise identical request, so this was never a Python quirk, and it would have failed for any HTTP/1.1 MCP client, not just this one | **Fixed.** `gateway_client.py` now sends the real request with `httpx[http2]`; `urllib.request.Request` stays as the object tests inject through `opener`, so none of the 17 tests changed. Rebuilt the image, redeployed, confirmed live: `whoami` now resolves Maya's identity correctly over the Gateway from this client |
-| U2/U3 | High | **An AWS Organizations SCP blocks every Claude 4.5/5.5-generation model in this account**, independent of model ID form. Plain `anthropic.claude-opus-5-5`: `403 "not available for this account... contact AWS Sales"` (ordinary model access, not the SCP). Every inference-profile form tried - `eu.` and `global.`, Opus/Sonnet/Haiku 5.5, and the 4.5-generation models too - came back a different, more specific `403`: `"...is not authorized to perform: bedrock:InvokeModel ... with an explicit deny in a service control policy: arn:aws:organizations::<org-account-id>:policy/.../<policy-id>"`. Note the account ID in that ARN is not the sandbox account's - the policy is attached at the managing Organization, outside what `AdministratorAccess` in the sandbox account can see or change. `bedrock-mantle:CreateInference`, the IAM action this project's own Runtime role grants (U3), was never reached - the SCP denies the call before that policy is even evaluated | **Not ours to fix.** Needs whoever administers that AWS Organization to allow at least one Claude model for this account, or needs to know which model (if any) is allowed. Every Claude 3/3.5-era model tried is end-of-life or an invalid identifier, so there is currently no fallback model to demo with at all |
+| U6 | High | **A caller on HTTP/1.1 gets no verified identity.** The same token, headers and body work over HTTP/2 and fail over HTTP/1.1 with `403 "no verified identity on this call"` (`curl --http1.1` against `--http2`). The first record of this said the Gateway resolves identity only over HTTP/2. The more likely cause is in this project: `identity_interceptor.py` looked up the header as `authorization`, lower case only. HTTP/2 clients send header names in lower case. HTTP/1.1 clients send `Authorization`, so the lookup found nothing. Any HTTP/1.1 MCP client would fail, not only this one | **Fixed in two places.** `gateway_client.py` sends over HTTP/2 with `httpx[http2]` (deployed, confirmed live: `whoami` resolves Maya). The interceptor now reads the header in any case (two tests). **The cause is not proven until the interceptor is deployed:** then `curl --http1.1` must return the identity. See U8 |
+| U2/U3 | High | **No Claude model can be called from this account. There are two different refusals, and they may have two causes.** (1) The inference-profile IDs (`eu.` and `global.`, Opus, Sonnet and Haiku 5.5, and the 4.5 generation) are refused with `"not authorized to perform: bedrock:InvokeModel ... with an explicit deny in a service control policy"`. The policy belongs to the managing AWS Organization, so `AdministratorAccess` in the sandbox account cannot see or change it. (2) The plain ID `anthropic.claude-opus-5-5` is refused with `"not available for this account... contact AWS Sales"`. That is model access, not the policy. The agent uses the second path (`bedrock-mantle:CreateInference`, not `bedrock:InvokeModel`), so lifting the policy alone may not be enough | **Not ours to fix in code.** Ask the Organization's administrator for two things: an exception to the policy for this account, and access to Claude Opus 5.5 (or Sonnet 5.5) in `eu-west-2`. Until then, `demo/agent_chat.py --provider anthropic` runs the same agent against the Claude API with an API key, so U1 can be settled. U3 is still not reached |
 | U4 | - | **Answered.** The Gateway path to the Runtime is `{gateway_url}/{TargetName}/invocations` - `/Orchestrator/invocations` here, not `/invocations` alone (that form reaches the Gateway but finds no target named "invocations"). Confirmed: with the fix above deployed, a call to this URL reaches the container, resolves Maya's identity correctly, and fails only at the model call - the same SCP-driven `NotFoundError` AnthropicBedrockMantle gives (its error reporting differs from the classic client's, but the cause is the same SCP) | Use this URL in the runbook, not `/invocations` |
 | U5 | - | **Answered.** `cdk diff` and `cdk deploy` both ran clean, twice (once for N6, once for the U6 fix). The diff matched what N6 predicted: two new Runtime role statements, `MODEL_ID`, the new image digest, the new target description | None |
 | U7 | Low | **A permanently-failing model call does not fail fast.** Through the deployed Runtime, a request that can only ever 404 took over 150 seconds and the container logged dozens of retried model calls before the platform itself gave up with `"Runtime initialization time exceeded"`. Not fully diagnosed - may be the Runtime's own cold-start/retry behaviour rather than anything in this code, and there was no way to test a call that eventually succeeds | Revisit once U2 is unblocked and a real reply can be timed |
@@ -64,6 +64,28 @@ findings, one fixed in code, one not ours to fix.
 Everything else N6 set out to prove - the agent's own logic, the tool set, the identity
 rule, the Gateway wiring - is now proven as far as it can be without a model that is
 allowed to answer. The blocker is organisational, not technical.
+
+Two more points from reading this run:
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| U8 | Medium | **The HTTP/2 conclusion was recorded before the cause was found** (the same pattern as S12). The header lookup explains the result without any Gateway behaviour | Deploy the interceptor fix, then run the check below. If HTTP/1.1 now returns the identity, say so in U6 and the client can go back to the standard library |
+| U9 | Medium | **The managing Organization's account ID and policy ID were in this public file** (the same rule as T2) | Removed from this file. They are still in the history of `84ba4b6` |
+
+The U8 check, after `cdk deploy MemoryVisaAgentCore`:
+
+```bash
+curl -s --http1.1 -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $MAYA" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"AccessRequestTools___whoami","arguments":{}}}'
+```
+
+Expected result: Maya's email in the answer, not `no verified identity`.
+
+On U7: the Anthropic SDK retries a failed call twice at most, and it does not retry a 404.
+Dozens of model calls for one request means something outside this code sent the request
+again. `server.py` answers a failed model call with HTTP 502, and a 5xx invites a retry.
+Look at this again when a model call can succeed.
 
 ### Stage 3: the agent
 

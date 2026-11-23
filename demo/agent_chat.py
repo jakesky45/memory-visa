@@ -82,6 +82,12 @@ def main() -> int:
     parser.add_argument("--token", help="an access token, if you already have one")
     parser.add_argument("--url", help="POST to the deployed agent at this URL; default is the local loop")
     parser.add_argument("--model", help="Bedrock model ID; default anthropic.claude-opus-5-5")
+    parser.add_argument(
+        "--provider",
+        choices=("bedrock", "anthropic"),
+        default="bedrock",
+        help="anthropic: call the Claude API with ANTHROPIC_API_KEY, when the AWS account cannot call a model",
+    )
     parser.add_argument("--region", default=os.environ.get("AWS_REGION", "eu-west-2"))
     args = parser.parse_args()
 
@@ -91,7 +97,8 @@ def main() -> int:
     agent = None
     if not args.url:
         gateway = GatewayClient(_parameter(ssm, "gateway-mcp-url"), token)
-        agent = ChatAgent(make_model_client(args.region), gateway, model_id=args.model)
+        model_id = args.model or ("claude-opus-5-5" if args.provider == "anthropic" else None)
+        agent = ChatAgent(make_model_client(args.region, args.provider), gateway, model_id=model_id)
         try:
             identity = agent.load()
         except GatewayError as exc:

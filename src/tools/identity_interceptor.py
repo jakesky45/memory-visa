@@ -47,6 +47,17 @@ def _resolve_identity(bearer_header: str) -> dict:
     }
 
 
+def _authorization(headers: dict) -> str:
+    """The Authorization header, whatever its case. HTTP/2 clients send header names
+    in lower case; HTTP/1.1 clients send them as typed ("Authorization"). A lookup of
+    "authorization" alone found nothing for an HTTP/1.1 client, so that caller got no
+    verified identity (REVIEW.md, U6)."""
+    for name, value in headers.items():
+        if name.lower() == "authorization":
+            return value or ""
+    return ""
+
+
 def handler(event, context):
     gateway_request = event.get("mcp", {}).get("gatewayRequest")
     if gateway_request is None:
@@ -57,7 +68,7 @@ def handler(event, context):
     headers = gateway_request.get("headers", {}) or {}
     body = gateway_request.get("body", {}) or {}
 
-    identity = _resolve_identity(headers.get("authorization", ""))
+    identity = _resolve_identity(_authorization(headers))
 
     arguments = body.get("params", {}).get("arguments")
     if isinstance(arguments, dict):

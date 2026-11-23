@@ -49,12 +49,19 @@ their words. A person on the other team approves or denies it; you cannot.
 - Say where a fact came from: this conversation, or memory and which namespace."""
 
 
-def make_model_client(region: str | None = None):
+def make_model_client(region: str | None = None, provider: str = "bedrock"):
     """The Anthropic SDK's client for Claude in Amazon Bedrock. It signs with the AWS
-    credentials of the caller: the Runtime's role in the container, your own locally."""
-    from anthropic import AnthropicBedrockMantle  # lazy: the offline tests need no SDK
+    credentials of the caller: the Runtime's role in the container, your own locally.
 
-    return AnthropicBedrockMantle(aws_region=region or os.environ.get("AWS_REGION", "eu-west-2"))
+    provider="anthropic" is for a local run when the AWS account cannot call a model
+    (REVIEW.md, U2): the same SDK and the same loop against the Claude API, with
+    ANTHROPIC_API_KEY. Memory still goes through the Gateway. Use it with a model ID
+    that has no "anthropic." prefix, for example claude-opus-5-5."""
+    import anthropic  # lazy: the offline tests need no SDK
+
+    if provider == "anthropic":
+        return anthropic.Anthropic()
+    return anthropic.AnthropicBedrockMantle(aws_region=region or os.environ.get("AWS_REGION", "eu-west-2"))
 
 
 def _short_name(tool_name: str) -> str:
