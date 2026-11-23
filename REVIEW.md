@@ -786,7 +786,9 @@ Reworked 23 November 2026 (`docs/index.html`). What changed, and what is still o
 | The orchestrator | **Fixed.** Says it holds an agent that has not yet answered with a real model, so the post shows the tools and not the agent |
 | Identity binding | One short paragraph on the header-case mistake, as a lesson |
 | Staleness | Says a published fact cannot yet be withdrawn |
-| Still open | The new transcripts are shortened from the run records, not raw JSON: replace them with raw output when you next run the tools. The facts in B4 (the name "Dogwood", the AWS blog's date, the GA dates) still need your check (D6). The middle sections ("No Bespoke UI" to "whoami") are still long and could lose a third. Beats 1 and 2 are not in the post, because no model has answered yet |
+| The middle sections | **Tightened** by about a quarter (1,725 words to 1,259): "What a Grant Unlocks", "No Bespoke UI", "Closing the Loop", "whoami". The Cedar gap is now one paragraph, not a numbered bug story |
+| Facts (B4, D6) | **Checked against the AWS pages on 23 November 2026.** "Dogwood" is AWS's own name; the wording now follows AWS ("extends the authorization model of Cedar"). Per-caller session isolation is confirmed for authenticated Gateways and is now quoted with its link. AgentCore general availability: 13 October 2025, confirmed. Bedrock Agents Classic closed to new customers from 30 July 2026, confirmed. The Claude Code issue is closed without a fix, not "open": corrected |
+| Still open | **The AWS Security Blog post.** I could not read its body or confirm its date (the page returns only navigation to my tools). The post says it came out "three days before this post" and lands on "the exact same primitive". Jake: open it in a browser and check both before the talk. The new transcripts are shortened from the run records, not raw JSON: replace them with raw output when you next run the tools. Beats 1 and 2 are not in the post, because no model has answered yet. Two links in the Dogwood paragraph are community posts, not AWS |
 
 ### The demo, in four beats
 
