@@ -1066,7 +1066,17 @@ python3 demo/publish_boundary_demo.py     # IAM refuses a direct write outside a
 
     <pre><code>cd cdk &amp;&amp; npx cdk destroy --all</code></pre>
 
-    <p>To use an AI client and not <code>curl</code>, give it the Gateway's <code>/mcp</code> address and Maya's token as the bearer token. <code>tools/list</code> then shows all ten:</p>
+    <p>To use an AI client and not <code>curl</code>, give it the Gateway's <code>/mcp</code> address and Maya's token as the bearer token:</p>
+
+    <div class="sketch col">
+      <div class="box wobble-a">AI client<br><span class="sub">Claude Desktop, Cursor, or Kiro - MCP does not care which</span></div>
+      <div class="arrow-down"><span class="sub">MCP server config: the Gateway's /mcp URL, Maya's access token as the bearer</span></div>
+      <div class="box dashed-green wobble-b">tools/list<br><span class="sub">the client asks the Gateway what it can call</span></div>
+      <div class="arrow-down"></div>
+      <div class="box wobble-c">All ten tools appear<br><span class="sub">request_access, memory_search, whoami, and the rest - ready to call like any other tool</span></div>
+    </div>
+
+    <p><code>tools/list</code> shows all ten:</p>
 
     <pre><code>request_access
 list_pending
