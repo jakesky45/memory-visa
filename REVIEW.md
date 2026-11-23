@@ -40,6 +40,43 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 
 The three live checks above are done (T3, T4, S12) - see each row for the result.
 
+### Seventh review: people or agents
+
+23 November 2026. Jake's question: "we talk about agents being allowed or humans being
+allowed. They are different things, no?" They are, and the project and the blog had not
+said which one they do.
+
+**What is true in the code:** every identity is a person's Cognito login. A grant is to a
+person. No agent has an identity or a permission. An agent carries the person's token and
+acts as them: an AI client, or the agent in `src/agents/chat_agent.py`.
+
+| # | Severity | Finding | State |
+|---|---|---|---|
+| H1 | High | **The blog spoke of agents as the owners of memory** ("Engineering's agent learns things Legal's agent will never see") while the code gives everything to people | Fixed. "Why Share Memory" now says memory belongs to people and teams, and an agent is how a person reaches it |
+| H2 | High | **The post did not say which model it uses.** A reader could believe an agent is approved | Fixed. New section, "People Hold Visas. Agents Travel on Them.", with the three models: the agent acts for a person (this repo), the agent is its own principal (not built), both (not built) |
+| H3 | High | **"Human-approved" means "approved with Liam's token".** If Liam's own agent holds his token, it can call `approve_access` and the server cannot tell. The agent in this repo is not given the approval tools; a general AI client is | Said in the post. **Not fixed in the design.** See N11 |
+| H4 | Medium | **The audit trail names the person, not the client or agent** that made the read | Said in the post. **Not fixed.** See N11 |
+| H5 | Medium | **An agent can misuse a grant its person holds**, for example when steered by text it has read. Read-only, one namespace and a short window limit it | Said in the post. This is a property of delegation, not a bug |
+| H6 | Low | **The brokered answer needs agent identity**, which is why it is not built | Said in the post |
+| H7 | Low | **The README still said "built on Cedar" and "Cedar policy and Cognito JWT claims, nothing custom"** (B3) | Fixed |
+
+**The title.** Jake: the title and heading were dull. Now: "Visas, Not Keys", with "How
+teams share what their AI agents know, without handing over the building", and a tagline
+that carries the people-and-agents point: "The person holds it, their agent travels on it,
+and the border guard is AWS." The talk's thesis line (D4) is unchanged and is still the
+pitch's primary title; "Visas, Not Keys" is added there as an alternate.
+
+**N11, proposed, not built: tell the person from the agent.** In order of value:
+
+1. A second Cognito app client for agents, and a scope for approval. `approve_access`,
+   `deny_access`, `revoke_access` and `publish_fact` need the approval scope, and the agent
+   client cannot get it. The access token carries `client_id` and `scope`, so this is a
+   rule Cedar can enforce on this auth path, which the department rule could not.
+2. The client in the audit trail: each entry says which app client made the call.
+3. Agent identity for the brokered answer.
+
+Say go for N11 and I will build 1 and 2.
+
 ### Sixth review: the blog, for sound principles, facts and ease of use
 
 23 November 2026, on `docs/index.html` at `87d2ba5`. Each finding is fixed unless the last
@@ -801,6 +838,7 @@ In this order. Each is one change with its own tests.
 | N8 | One more sharing pattern: a published fact | Scale, S6 | **Done, deployed and proven live** (14 tests). Found and fixed a real SDK-version bug along the way (P5). Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
 | N10 | Claims in the access token; the Cedar `forbid` made active | C1 | To do. Would also carry projects (S6) |
+| N11 | Tell the person from the agent: an app client for agents, a scope for approval that an agent cannot get, the client in the audit trail | H3, H4 | Proposed. Waits on Jake. See "Seventh review" |
 
 ### The blog
 

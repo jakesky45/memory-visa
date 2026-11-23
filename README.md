@@ -1,12 +1,12 @@
 # memory-visa
 
-> Time-boxed, human-approved, audited access across isolated AI-agent memory boundaries - built on Cedar, Cognito, DynamoDB Streams and AWS Bedrock AgentCore.
+> Visas, not keys: time-boxed, human-approved, audited access across isolated AI-agent memory, on AWS Bedrock AgentCore. A grant is given to a person; their agent acts for them. Each read uses credentials that IAM limits to one namespace and one deadline.
 
 Static isolation keeps two organizations' - or two departments' - AI agents apart. It can't let them legitimately cross over on purpose, for a stated reason, for a limited time. This project is that second part: a grant store sitting on top of static isolation, not instead of it.
 
 ## What it does
 
-1. Robotinc's departments (Engineering, Legal, Finance) each get their own AgentCore Memory namespace and toolset by default - Cedar policy and Cognito JWT claims, nothing custom.
+1. Robotinc's departments (Engineering, Legal, Finance) each get their own AgentCore Memory namespace and toolset by default, from the caller's verified Cognito identity.
 2. When someone needs a real exception - Maya (Engineering) needs an export-control fact from Legal's files before a shipment - she calls `request_access` with a reason and a duration.
 3. Legal's real domain owner (Liam) approves or denies it from his own AI client - no bespoke UI, just an MCP tool call he can already make.
 4. Within the window, the Memory namespace opens for the requester, to read - never to write. The domain's tools come with it only if the request asked for them and the owner approved that. Past the window, access reverts on its own - no manual cleanup step.

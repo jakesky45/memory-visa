@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Isolated by Default, Shareable on Purpose: Agent Memory on Bedrock AgentCore</title>
+<title>Visas, Not Keys: Sharing AI Agent Memory Across Teams on Bedrock AgentCore</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -386,6 +386,7 @@
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
+    <a href="#people-and-agents">People and agents</a>
     <a href="#approval-ui">No bespoke UI</a>
     <a href="#identity-binding">Identity binding</a>
     <a href="#closing-the-loop">Closing the loop</a>
@@ -413,7 +414,8 @@
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
-        <a href="#approval-ui">No bespoke UI</a>
+        <a href="#people-and-agents">People and agents</a>
+    <a href="#approval-ui">No bespoke UI</a>
         <a href="#identity-binding">Identity binding</a>
         <a href="#closing-the-loop">Closing the loop</a>
         <a href="#what-a-caller-gets">whoami</a>
@@ -427,9 +429,9 @@
     <div class="content">
 
     <header class="hero">
-      <h1>Isolated by Default, Shareable on Purpose</h1>
-      <p class="hero-sub">memory-visa</p>
-      <p class="hero-tagline">Sharing agent memory across teams on Bedrock AgentCore: published facts for everyone, and a human-approved, time-boxed visa for the exception. Every read uses credentials that AWS limits to one namespace and one deadline.</p>
+      <h1>Visas, Not Keys</h1>
+      <p class="hero-sub">How teams share what their AI agents know, without handing over the building</p>
+      <p class="hero-tagline">A key opens a door for good. A visa lets one named person through, for a stated reason, until a stated time. The person holds it, their agent travels on it, and the border guard is AWS.</p>
     </header>
 
     <div class="badges">
@@ -459,17 +461,17 @@
 
     <ul>
     <li><strong>Most facts should not need a crossing at all.</strong> Legal publishes the classification once, with Legal's name on it, and everyone in the company can read it.</li>
-    <li><strong>The exception gets a visa.</strong> One person, one namespace, a stated reason, a short window, and a named human who said yes.</li>
+    <li><strong>The exception gets a visa.</strong> One person, one namespace, a stated reason, a short window, and a named human who said yes. The visa belongs to the person; their agent only carries it.</li>
     <li><strong>AWS holds the line on every read.</strong> Our code decides who gets a visa. The read itself happens with credentials that IAM limits to one namespace until one moment, and when the window closes the refusal comes from AWS.</li>
     </ul>
 
     <h2 id="why-share-memory">Why Share Memory At All</h2>
 
-    <p>If you're running more than one AI agent across your org, which most teams past a certain size already are, each agent's memory is usually its own island. Engineering's agent learns things Legal's agent will never see. Finance's agent starts from zero on a question Engineering already answered last quarter. Centralise that memory - one shared, namespaced store instead of five disconnected ones - and the payoff compounds: any agent can draw on what any other agent in the org already knows, not just its own slice.</p>
+    <p>Once a company has more than a few people working with AI agents, what those agents learn ends up in islands. What Engineering's people taught their agent, Legal's people never see. Finance starts from zero on a question Engineering answered last quarter. Put that memory in one shared, namespaced store and the payoff compounds: anyone's agent can draw on what the company already knows, not just its own slice.</p>
 
     <p>The catch shows up the moment you actually try it. Centralised means every agent can now see everything, which is worse than the islands you started with - that's not a hypothetical, it's the first thing that breaks. memory-visa is the piece in between: the store is shared, each team's part of it stays isolated by default, and crossing that boundary is a deliberate, audited, time-boxed act, not a permanent hole in the wall.</p>
 
-    <p>None of this requires standardising on one AI client, either. MCP means Maya keeps using Claude, Liam can be on Cursor, Priya on whatever ships next year - they're all calling the same tools behind the same Gateway, into the same memory. Bring your own agent; the memory and the access control are centralised, not the tool everyone's forced to open.</p>
+    <p>One distinction runs through everything below. Memory here belongs to people and teams, not to agents. An agent is how a person reaches it. So MCP means Maya keeps using Claude, Liam can be on Cursor, Priya on whatever ships next year: they all call the same tools behind the same Gateway, into the same memory, each as themselves.</p>
 
     <h2 id="the-problem">The Problem, Inside One Company</h2>
 
@@ -743,7 +745,31 @@ Liam approves a grant. The same search again:
 grant_activity as Priya (neither):
   403  "is not the owner of 'legal' and did not request"</code></pre>
 
-    <p>So Liam can ask his own AI client "what did Maya read under that grant?" and get an answer, from the same table that holds his approval.</p>
+    <p>So Liam can ask his own AI client "what did Maya read under that grant?" and get an answer, from the same table that holds his approval. What it cannot tell him yet is which agent Maya used.</p>
+
+    <h2 id="people-and-agents">People Hold Visas. Agents Travel on Them.</h2>
+
+    <p>"Is the agent allowed?" and "is the person allowed?" are different questions, and it is easy to slide between them. This project answers only the second. Every identity is a person's login. A grant is given to Maya. No agent has an identity or a permission of its own: it carries Maya's token and acts as Maya, whether it is her Claude session or the small agent in this repo.</p>
+
+    <p>There are three ways to do this, and it helps to know which one you are looking at:</p>
+
+    <table>
+    <thead><tr><th>Model</th><th>Who is allowed</th><th>Good for</th><th>In this repo</th></tr></thead>
+    <tr><td><strong>The agent acts for a person</strong></td><td>The person. The agent has exactly what they have</td><td>An assistant a person is driving</td><td>This one</td></tr>
+    <tr><td><strong>The agent is its own principal</strong></td><td>The agent, like a service account</td><td>Work with nobody present: a nightly job, or Legal's agent answering other teams</td><td>Not built</td></tr>
+    <tr><td><strong>Both</strong></td><td>Only what the agent <em>and</em> the person are each allowed</td><td>Anything that matters</td><td>Not built</td></tr>
+    </table>
+
+    <p>Being exact about this changes four claims in this post:</p>
+
+    <ul>
+    <li><strong>Liam approves Maya, not an agent.</strong> He cannot see or choose which agent will use the grant.</li>
+    <li><strong>The audit trail names Maya.</strong> It does not say which client or agent made the read.</li>
+    <li><strong>"Human-approved" means "approved with Liam's token".</strong> If Liam's own agent holds that token and decides to call <code>approve_access</code>, the server cannot tell. The agent in this repo is not given the approval tools for that reason, but a general AI client is. A real deployment should put approval behind something an agent cannot do for him: a separate sign-in or scope for the approval tools.</li>
+    <li><strong>An agent can misuse a grant its person holds.</strong> If it is steered by text it has read, it can search Legal's namespace for something Maya never asked for. Read-only, one namespace and a short window limit the damage. They do not remove it.</li>
+    </ul>
+
+    <p>The fifth pattern from the table near the top, the brokered answer, is where an agent needs its own identity: Legal's agent answers a question and nobody reads Legal's memory. That is why it is not built here yet.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 
@@ -946,6 +972,7 @@ grant_activity as Priya (neither):
 
     <ol>
     <li><strong>Identity comes from the verified token, never from an argument.</strong> No tool takes an email. The interceptor overwrites anything a caller types.</li>
+    <li><strong>Access belongs to a person. An agent acts for them and never has more.</strong> There is no agent identity here, and the post says where that falls short.</li>
     <li><strong>No standing permission to read.</strong> The code that answers a search cannot read memory by itself. It gets credentials for one namespace, for one read.</li>
     <li><strong>The platform enforces scope and time.</strong> The namespace and the deadline are IAM conditions, not lines of Python.</li>
     <li><strong>An exception is read-only, has a reason, and ends by itself.</strong> A grant never writes, and nobody has to remember to remove it.</li>
