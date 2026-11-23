@@ -36,7 +36,7 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 | T2 | Medium | **The sandbox account ID was in this public file.** `cdk/app.py` says the account ID is never in git | Removed from this file, and from the git history on 23 November 2026 (U9) |
 | T3 | Medium | **The Guardrail has not seen a secret live.** The one live write was plain text. Masking and blocking are proven offline only | **Checked.** A fake access key, written live, was gone by the time it came back through search - extraction reworded it to "(key value omitted for security)", no raw or masked key text anywhere in the result. A fake private key, written live, came back `422 "this content may not be stored: the Guardrail blocked it"`, and nothing was stored. Both as designed |
 | T4 | Low | **Which namespace form IAM matched is not recorded.** A8 line 1 was allowed, so one of the two forms in the policy matched. Knowing which lets the other be removed | **Checked, and the answer is odd: both matched independently.** A session policy naming only `/org_robotinc_dept_legal/` allowed the read; a separate one naming only the bare `org_robotinc_dept_legal` also allowed it. AgentCore's `bedrock-agentcore:namespace` condition key appears to match this namespace in either representation - I don't have a documented explanation for why, only the two results. Listing both forms in `namespace_condition_values` is still the safe choice; there's no evidence either is the one doing the work |
-| T5 | Low | **S5 is closed.** The Lambda's built-in AWS SDK knows the AgentCore API: the live write and search worked | None |
+| T5 | Low | **S5 is closed** - for the calls checked at the time. *(Reopened in the N8 run, P5: `BatchCreateMemoryRecords` with `metadata` needed a newer SDK than the runtime's own. Fixed - see N8)* | None |
 
 The three live checks above are done (T3, T4, S12) - see each row for the result.
 
@@ -100,7 +100,8 @@ Look at this again when a model call can succeed.
 
 ### N8: published facts
 
-Written 23 November 2026. Tested offline; not deployed.
+Written 23 November 2026. **Deployed and proven live the same day, with one real bug found
+and fixed along the way** - see below.
 
 The visa is the exception: one person, one namespace, a short time, a human approval. It
 does not scale to a fact that many people need. A published fact is the rule: the owner of
@@ -117,31 +118,35 @@ a domain says it once, and everyone in the org can read it with no grant.
 | `whoami` | Names the published namespace, so a person or the agent knows where to search |
 | The agent | Searches the published namespace after the person's own, prefers a published fact, and says who published it |
 
-**Not proven**
+**P5 (found running this live, not anticipated): the Lambda's own built-in boto3 did not
+know the API.** `BatchCreateMemoryRecords` with `metadata` set failed with
+`ParamValidationError: Unknown parameter in records[0]: "metadata", must be one of:
+requestIdentifier, namespaces, content, timestamp, memoryStrategyId` - the Python 3.12
+runtime's bundled SDK is older than this feature. This is **S5, back open**: T5 closed it
+too early, on calls (`CreateEvent`, `RetrieveMemoryRecords`) that happened not to need a
+newer SDK. **Fixed:** `src/requirements.txt` pins `boto3==1.44.9` (checked directly against
+that version's service model: it has `metadata`), and `AccessRequestTools`' CDK asset now
+bundles it with Docker (`BundlingOptions`, `pip install -r requirements.txt -t
+/asset-output`) instead of relying on the runtime's own copy. Confirmed in the built
+package: `boto3-1.44.9` and `botocore-1.44.9`, not the runtime's older version. Needs Docker
+to build; `cdk synth`/`cdk deploy` do that automatically.
 
-| # | Not proven | If it fails |
-|---|---|---|
-| P1 | Search returns a record written this way when it has no strategy ID. The AWS pages do not say | Deploy again with `-c publishedStrategyId=<the strategy_id shown in any search result>` |
-| P2 | The IAM condition on `BatchCreateMemoryRecords` matches. Both namespace forms are listed, as in T4 | Send me the `AccessDeniedException` |
-| P3 | Metadata comes back on a search result under `metadata` | The fact is still found; send me one raw result |
-| P4 | How soon a new record can be found | Wait a minute and search again |
+**Run 23 November 2026, against the deployed stack, after the fix above:**
 
-**To deploy and check.** No new image is needed.
-
-```bash
-make eval                                   # expect: 97 passed
-cd cdk && cdk diff MemoryVisaAgentCore      # expect: the tools Lambda code, one new tool, one new Cedar action, one new IAM statement
-cdk deploy MemoryVisaAgentCore && cd ..
-
-call "$MAYA" publish_fact '{"department":"legal","text":"The X-7 is EAR99."}'           # expect: 403, Maya does not own legal
-call "$LIAM" publish_fact '{"department":"legal","text":"The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal."}'
-# expect: 200, a recordId, published_by liam
-
-call "$MAYA" whoami '{}'                                                                 # expect: memory.published_namespace = org_robotinc_published
-call "$MAYA" memory_search '{"namespace":"org_robotinc_published","query":"X-7 classification"}'
-# expect: the fact, word for word, access {"via":"published"}, metadata with published_by and department. No grant.
-call "$MAYA" memory_write '{"namespace":"org_robotinc_published","text":"It is EAR99."}' # expect: 403
 ```
+Maya publishes for legal: 403 "does not own domain 'legal' in org 'robotinc'"
+Liam publishes for legal: 200, recordId mem-1f992202-..., published_by liam
+Maya's whoami: memory.published_namespace = "org_robotinc_published"
+Maya searches org_robotinc_published, no grant: the fact, word for word, access
+  {"via": "published"}, metadata has published_by, department, published_at, and three
+  AgentCore-internal fields (x-amz-agentcore-memory-recordType etc.) - found with NO
+  extraction wait, since this is a direct write, not an extracted event
+Maya tries memory_write into org_robotinc_published: 403 "no static claim, and no active grant"
+```
+
+P1, P2, P3 and P4 are all answered by that one run: no `publishedStrategyId` was needed (the
+record was found without one), the IAM condition matched cleanly, metadata was on the
+result exactly as written, and it was findable immediately, not after a wait.
 
 For the talk: Maya asks the agent about the X-7 and gets Legal's published answer with
 Liam's name on it, with no request and no wait. Then she asks for something Legal has not
@@ -673,7 +678,7 @@ In this order. Each is one change with its own tests.
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
 | N6 | An agent that calls a model and uses memory in a conversation | Scale | **Written and tested offline** (17 tests). Not deployed, not run against a real model. See "Stage 3: the agent" |
 | N7 | Search across every namespace the caller may read | M7 | To do, after N2 |
-| N8 | One more sharing pattern: a published fact | Scale, S6 | **Written and tested offline** (14 tests). Not deployed. Project namespaces and the brokered answer are not built. See "N8: published facts" |
+| N8 | One more sharing pattern: a published fact | Scale, S6 | **Done, deployed and proven live** (14 tests). Found and fixed a real SDK-version bug along the way (P5). Project namespaces and the brokered answer are not built. See "N8: published facts" |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
 | N10 | Claims in the access token; the Cedar `forbid` made active | C1 | To do. Would also carry projects (S6) |
 

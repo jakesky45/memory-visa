@@ -1,0 +1,7 @@
+# Only for AccessRequestTools (cdk/stacks/agentcore_stack.py bundles this in for that
+# Lambda alone): the Python 3.12 runtime's own built-in boto3 does not know the
+# "metadata" field on BatchCreateMemoryRecords - confirmed live, 23 November 2026,
+# with a ParamValidationError naming the five fields it did know. 1.44.9 does know it
+# (checked against the service model directly); pinned to the version checked, not a
+# floor guessed at.
+boto3==1.44.9

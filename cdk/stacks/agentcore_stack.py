@@ -16,7 +16,7 @@ flag it, and revisit once AgentCore Policy's custom-context story is clear.
 """
 from __future__ import annotations
 
-from aws_cdk import Duration, RemovalPolicy, Stack
+from aws_cdk import BundlingOptions, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_bedrockagentcore as agentcore
 from aws_cdk import aws_cognito as cognito
 from aws_cdk import aws_dynamodb as dynamodb
@@ -489,7 +489,20 @@ class AgentCoreStack(Stack):
             "AccessRequestTools",
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="tools.access_request_tools.handler",
-            code=lambda_.Code.from_asset("../src"),
+            # Bundled with a current boto3 (src/requirements.txt), not the runtime's own -
+            # confirmed live, 23 November 2026: the built-in one doesn't know the
+            # "metadata" field on BatchCreateMemoryRecords (N8), a ParamValidationError
+            # naming only five of the six real fields. Needs Docker to build.
+            code=lambda_.Code.from_asset(
+                "../src",
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_12.bundling_image,
+                    command=[
+                        "bash", "-c",
+                        "pip install -r requirements.txt -t /asset-output && cp -au . /asset-output",
+                    ],
+                ),
+            ),
             timeout=Duration.seconds(10),
             environment={
                 "GRANTS_TABLE_NAME": self.grants_table.table_name,

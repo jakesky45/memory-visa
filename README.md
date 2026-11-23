@@ -37,7 +37,7 @@ Deployed in the sandbox account, `eu-west-2`:
 | AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` kept at `LOG_ONLY` (see below) |
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth; `IdentityInterceptor` resolves real Cognito identity before every tool call |
 | EngineeringTools target | `READY`, gate inert | `check_shipping_classification`'s department gate can't fire - Cognito access tokens carry no custom attributes, so `hasTag("department")` is never true. Left at `LOG_ONLY` rather than claim a gate that doesn't hold |
-| AccessRequestTools target | `READY` | eight MCP tools (`request_access`, `approve_access`, `whoami`, `memory_search`, `memory_write`, etc.), one Lambda, state in DynamoDB |
+| AccessRequestTools target | `READY` | ten MCP tools (`request_access`, `approve_access`, `whoami`, `memory_search`, `memory_write`, `grant_activity`, `publish_fact`, etc.), one Lambda, state in DynamoDB |
 | GrantNotifier | `READY`, not wired up | Lambda + DynamoDB Streams trigger fire on every grant write, but `/memory-visa/slack-webhook-url` was never set - nothing is delivered yet |
 | AgentCore Memory | `ACTIVE` | pool-tenancy, one semantic strategy, 31-day record expiry |
 | AgentCore Runtime | `READY` | `network_mode="PUBLIC"` (no NAT gateway in this stack) |
@@ -126,7 +126,7 @@ cdk destroy --all
 | `src/agents/domain_owners.py` | per-org approval authority |
 | `src/agents/access_requests.py` | request/approve/deny logic |
 | `src/tools/identity_interceptor.py` | resolves a caller's real Cognito identity before any tool runs |
-| `src/tools/access_request_tools.py` | the grant workflow, `memory_search`/`memory_write`, and `grant_activity` (what was read under a grant), and `publish_fact` (a domain owner publishes a fact to the org; not deployed yet) - ten MCP tools, one Lambda |
+| `src/tools/access_request_tools.py` | the grant workflow, `memory_search`/`memory_write`, `grant_activity` (what was read under a grant), and `publish_fact` (a domain owner publishes a fact to the org, no grant needed to read it) - ten MCP tools, one Lambda |
 | `src/tools/grant_notifier.py` | DynamoDB Streams → Slack, both directions |
 | `src/tools/check_shipping_classification_tool.py` | the one real Engineering Gateway tool, a stub |
 | `src/agents/chat_agent.py` | the agent - Claude on Amazon Bedrock, with memory only through the Gateway tools and the user's own token |
@@ -136,6 +136,7 @@ cdk destroy --all
 | `tests/` | the eval suite - runs the six properties offline, no AWS account needed |
 | `cdk/` | network, guardrails, and agentcore CDK stacks |
 | `Dockerfile` | the orchestrator's container image (arm64, `PYTHONUNBUFFERED=1`) |
+| `src/requirements.txt` | bundled into `AccessRequestTools` alone, with Docker (CDK `BundlingOptions`) - pins a `boto3` newer than the Lambda runtime's own, which doesn't know every AgentCore Memory field yet |
 | `Makefile` | `make eval` |
 
 ## What's next
