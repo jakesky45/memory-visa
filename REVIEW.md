@@ -49,6 +49,41 @@ or pipe straight to `jq`):
    If that is allowed and the plain form is refused, or the reverse, tell me which.
 3. **S12.** The check in that section.
 
+### What now
+
+| Who | What | Where |
+|---|---|---|
+| Jake | Run the three live checks that finish stage 2 (about ten minutes) | "Third review", under "Three live checks" |
+| Jake | Decide how the agent learns who is talking to it (D9), and which model it uses (D10) | "Your decisions" |
+| Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
+| Claude | Build the agent, once D9 is answered | "Stage 3: the plan" |
+
+### Stage 3: the plan
+
+The repository has tools and no agent. Nothing calls a model, so the talk cannot yet show
+memory used in a conversation. That is demo beats 1 and 2.
+
+The first build, N6:
+
+- A small agent in the orchestrator container. The container is deployed and only answers
+  `/ping` today, and `server.py` was kept for this.
+- It calls a model on Bedrock and has two tools: search memory and write memory.
+- It follows one conversation (short-term memory) and recalls what it learned in a new
+  conversation (long-term memory).
+- It reads shared memory only through the visa, so a refusal by AWS shows in the conversation.
+
+The decision it waits on, D9: how the agent knows who is talking to it. This is the problem
+the memory tools had (M1), and the agent must not bring it back.
+
+| Option | How | For | Against |
+|---|---|---|---|
+| **A. The agent calls the Gateway's memory tools with the user's own token** (recommended) | The agent has no memory permissions. Identity, grants, the Guardrail and the visa stay where they are proven | One path to memory. Nothing to prove twice | The user's token must be passed through to the agent |
+| B. The agent reads memory directly | The agent has its own role and its own copy of the checks | Less wiring | A second path to memory with its own identity handling. That is what M1 removed |
+
+After the agent, in order: provenance on results and reads in the audit table (N2), search
+across every namespace the caller may read (N7), and one more way to share besides the
+visa (N8).
+
 ### Stage 2: what was done
 
 Run 23 November 2026, against the sandbox account (`eu-west-2`), using Jake's
@@ -399,6 +434,8 @@ If the proof does not match:
 | D6 | Verify three facts before they are said on stage (B4) | I could not confirm them | The name "Dogwood"; the AWS security blog and its date; the AgentCore and Bedrock Agents dates |
 | D7 | What may memory hold? (S4) | **Decided:** names stay; secrets are masked or refused | |
 | D8 | When is the Summit, and how long is the slot? | It decides how much of stages 3 and 4 is realistic | |
+| D9 | How does the agent learn who is talking to it? | It decides whether there is one path to memory or two | Option A: the agent calls the Gateway's memory tools with the user's own token. See "Stage 3: the plan" |
+| D10 | Which model does the agent use on Bedrock? | Cost, and what your account has enabled | I will check what is current and propose one before writing code |
 
 ### Next to build
 
@@ -411,7 +448,7 @@ In this order. Each is one change with its own tests.
 | N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | **Done.** 24 tests |
 | N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the outcome and the grant ID | M4, M10, S9 | To do |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
-| N6 | An agent that calls a model and uses memory in a conversation | Scale | To do. `server.py` is kept as the place for it |
+| N6 | An agent that calls a model and uses memory in a conversation | Scale | **Next.** Waits on D9. See "Stage 3: the plan" |
 | N7 | Search across every namespace the caller may read | M7 | To do, after N2 |
 | N8 | One more sharing pattern: a published fact, or a brokered answer. Project namespaces working live | Scale, S6 | To do |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
