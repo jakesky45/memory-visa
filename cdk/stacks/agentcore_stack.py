@@ -884,7 +884,7 @@ class AgentCoreStack(Stack):
                     # this digest on every push.
                     container_uri=(
                         f"{self.account}.dkr.ecr.{self.region}.amazonaws.com/memory-visa-orchestrator"
-                        "@sha256:4c604185eeea6808c48e2c4794fc53a15d9e0f8cdd4d381b01f02189d6002f7f"
+                        "@sha256:00f36c150aa2bced5eab2687b0064ca7a8aebd08c89d3f7855cc6f7f0d36dacf"
                     ),
                 ),
             ),

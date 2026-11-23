@@ -22,7 +22,7 @@ Four stages. Nothing in a later stage is built until the one before it is proven
 | 1. Safe and true | Nothing wrong goes live, and the blog claims nothing that has not run | Claude | **Done.** See "Stage 1" below |
 | 2. Deploy and prove | The visa, proven against AWS | Claude, with Jake's AWS session | **Done.** See "Stage 2" below |
 | 2b. Finish the live checks | Three small checks stage 2 left out | Claude, with Jake's AWS session | **Done.** See "Third review" below |
-| 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | **Started.** The agent is written and tested offline; it waits on a live run. See "Stage 3: the agent" |
+| 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | **Run, and blocked.** The agent, the Gateway path and a real code bug are proven. The model call itself is blocked by an org policy - see "Fourth review: the stage 3 run" |
 | 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
 
 ### Third review: commits `0091dbf` and `4b31130`
@@ -44,9 +44,26 @@ The three live checks above are done (T3, T4, S12) - see each row for the result
 
 | Who | What | Where |
 |---|---|---|
-| Jake | Run the agent against the real model: steps 1 to 6 | "Stage 3: the agent", below |
+| Jake | Get the Claude model block lifted, or confirm which Anthropic model (if any) this account's SCP allows (U2) | "Fourth review: the stage 3 run" |
 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
-| Claude | After your run: provenance and reads in the audit table (N2), then published facts (N8), then search across namespaces (N7) | "Next to build" |
+| Claude | Once a model works: finish demo beats 1-4 live, then provenance and reads in the audit table (N2), published facts (N8), search across namespaces (N7) | "Next to build" |
+
+### Fourth review: the stage 3 run
+
+Run 23 November 2026, against the deployed stack, using Jake's AWS session. Two real
+findings, one fixed in code, one not ours to fix.
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| U6 | High | **`GatewayClient` could never have authenticated a real person.** The Gateway's `IdentityInterceptor` only resolves the caller's verified identity over HTTP/2. The exact same token, same headers, same body, over HTTP/1.1, comes back `403 "no verified identity on this call - ... not the shared service credential"`. `urllib` (what the client was built on) cannot speak HTTP/2 at all - confirmed with `curl --http1.1` against `--http2` on an otherwise identical request, so this was never a Python quirk, and it would have failed for any HTTP/1.1 MCP client, not just this one | **Fixed.** `gateway_client.py` now sends the real request with `httpx[http2]`; `urllib.request.Request` stays as the object tests inject through `opener`, so none of the 17 tests changed. Rebuilt the image, redeployed, confirmed live: `whoami` now resolves Maya's identity correctly over the Gateway from this client |
+| U2/U3 | High | **An AWS Organizations SCP blocks every Claude 4.5/5.5-generation model in this account**, independent of model ID form. Plain `anthropic.claude-opus-5-5`: `403 "not available for this account... contact AWS Sales"` (ordinary model access, not the SCP). Every inference-profile form tried - `eu.` and `global.`, Opus/Sonnet/Haiku 5.5, and the 4.5-generation models too - came back a different, more specific `403`: `"...is not authorized to perform: bedrock:InvokeModel ... with an explicit deny in a service control policy: arn:aws:organizations::<org-account-id>:policy/.../<policy-id>"`. Note the account ID in that ARN is not the sandbox account's - the policy is attached at the managing Organization, outside what `AdministratorAccess` in the sandbox account can see or change. `bedrock-mantle:CreateInference`, the IAM action this project's own Runtime role grants (U3), was never reached - the SCP denies the call before that policy is even evaluated | **Not ours to fix.** Needs whoever administers that AWS Organization to allow at least one Claude model for this account, or needs to know which model (if any) is allowed. Every Claude 3/3.5-era model tried is end-of-life or an invalid identifier, so there is currently no fallback model to demo with at all |
+| U4 | - | **Answered.** The Gateway path to the Runtime is `{gateway_url}/{TargetName}/invocations` - `/Orchestrator/invocations` here, not `/invocations` alone (that form reaches the Gateway but finds no target named "invocations"). Confirmed: with the fix above deployed, a call to this URL reaches the container, resolves Maya's identity correctly, and fails only at the model call - the same SCP-driven `NotFoundError` AnthropicBedrockMantle gives (its error reporting differs from the classic client's, but the cause is the same SCP) | Use this URL in the runbook, not `/invocations` |
+| U5 | - | **Answered.** `cdk diff` and `cdk deploy` both ran clean, twice (once for N6, once for the U6 fix). The diff matched what N6 predicted: two new Runtime role statements, `MODEL_ID`, the new image digest, the new target description | None |
+| U7 | Low | **A permanently-failing model call does not fail fast.** Through the deployed Runtime, a request that can only ever 404 took over 150 seconds and the container logged dozens of retried model calls before the platform itself gave up with `"Runtime initialization time exceeded"`. Not fully diagnosed - may be the Runtime's own cold-start/retry behaviour rather than anything in this code, and there was no way to test a call that eventually succeeds | Revisit once U2 is unblocked and a real reply can be timed |
+
+Everything else N6 set out to prove - the agent's own logic, the tool set, the identity
+rule, the Gateway wiring - is now proven as far as it can be without a model that is
+allowed to answer. The blocker is organisational, not technical.
 
 ### Stage 3: the agent
 
@@ -57,12 +74,12 @@ Decided 23 November 2026: D9 is option A, and D10 is Claude Opus 5.5 on Amazon B
 | File | What it does |
 |---|---|
 | `src/agents/chat_agent.py` | The agent. It calls the model with the Anthropic SDK's Bedrock client (`AnthropicBedrockMantle`, model `anthropic.claude-opus-5-5`, set by `MODEL_ID`). It has four tools from the Gateway: `whoami`, `memory_search`, `memory_write`, `request_access`. It cannot approve, deny or revoke |
-| `src/agents/gateway_client.py` | A small MCP client. It sends the user's own token to the Gateway and returns the tool's status, so a 403 reaches the model as a refusal |
+| `src/agents/gateway_client.py` | A small MCP client. It sends the user's own token to the Gateway and returns the tool's status, so a 403 reaches the model as a refusal. Sends over HTTP/2 (`httpx`) - the Gateway's interceptor does not resolve identity over HTTP/1.1 (U6) |
 | `src/server.py` | `POST /invocations` with `{"prompt", "access_token", "session_id"}`. It does not read the token. It passes it to the Gateway. One conversation per session and verified email |
 | `demo/agent_chat.py` | Talk to the agent from a terminal. Each memory call is printed under the reply. `/new` starts a new conversation |
 | `tests/test_chat_agent.py` | 17 tests with a fake model and a fake Gateway |
 | `cdk/stacks/agentcore_stack.py` | The Runtime role may call the model and read one parameter (the Gateway URL). `MODEL_ID` on the Runtime. No memory permission |
-| `Dockerfile` | Installs `anthropic[bedrock]` |
+| `Dockerfile` | Installs `anthropic[bedrock]` and `httpx[http2]` |
 
 How D9 is kept:
 
@@ -77,11 +94,12 @@ Short-term memory is the message list of one conversation, held in the container
 
 | # | Not proven | How it is settled |
 |---|---|---|
-| U1 | The model's real behaviour. The tests use a fake model | Step 3 |
-| U2 | Your account can call Claude Opus 5.5 in `eu-west-2`. The Anthropic page lists the region; access is per account | Step 2 |
-| U3 | The IAM statement for the Runtime role. The action is `bedrock-mantle:CreateInference`. The AWS pages I read give no ARN format for it, so the resource is `*` | Step 5. If the model call is denied, send me the error |
-| U4 | The path through the Gateway to the container: the URL, whether the body arrives unchanged, and whether the Gateway waits long enough for a model call | Step 6. The demo does not depend on it: step 3 runs the same agent on your machine |
-| U5 | `cdk synth`. I could not run it here | Step 5, the diff |
+| U1 | **Still open.** The model's real behaviour - the tests use a fake model, and no live call has ever succeeded (U2) | Once U2 is unblocked |
+| U2 | Your account can call *some* Claude model in `eu-west-2` | **Blocked by an org policy, not answered.** See "Fourth review" |
+| U3 | The IAM statement for the Runtime role (`bedrock-mantle:CreateInference`, resource `*`) | **Not reached yet** - the org-level SCP denies the call before this policy is evaluated. See "Fourth review" |
+| U4 | The path through the Gateway to the container | **Answered:** `{gateway_url}/{TargetName}/invocations`. See "Fourth review" |
+| U5 | `cdk synth`/`cdk deploy` | **Answered: clean, twice.** See "Fourth review" |
+| U6 | *(found during the run, not anticipated here)* `GatewayClient` over HTTP/1.1 | **Found and fixed.** See "Fourth review" |
 
 **Runbook: stage 3**
 
@@ -91,7 +109,7 @@ Use the shell variables and the `token` function from "Runbook: stage 2 on anoth
 
 ```bash
 git pull
-pip install pytest boto3 "anthropic[bedrock]"
+pip install pytest boto3 "anthropic[bedrock]" "httpx[http2]"
 make eval
 ```
 
@@ -111,7 +129,10 @@ print(next(b.text for b in message.content if b.type == "text"))
 PY
 ```
 
-Expected result: one short sentence. If access is refused and you want a different model, add `--model anthropic.claude-sonnet-5-5` in step 3.
+**Expected result: one short sentence. Run 23 November 2026: refused.** Not a model-access
+toggle - an AWS Organizations SCP denies Opus, Sonnet and Haiku 5.5, and the 4.5-generation
+models too, in this account. Switching `--model` in step 3 won't help until that's lifted.
+See "Fourth review: the stage 3 run" for the exact errors and the policy ARN.
 
 **3. Talk to the agent on your machine (beats 1 and 2)**
 
@@ -154,10 +175,11 @@ Expected diff: two new statements on the Runtime role (`bedrock-mantle:CreateInf
 **6. Talk to the deployed agent**
 
 ```bash
-MV_PASSWORD='<password>' python3 demo/agent_chat.py --user maya --url "$GATEWAY_URL/invocations"
+MV_PASSWORD='<password>' python3 demo/agent_chat.py --user maya --url "$GATEWAY_URL/Orchestrator/invocations"
 ```
 
-I am not sure of this URL (U4). If it fails, send me the error and the Gateway target's details, and use step 3 for the demo.
+U4 is answered: it's `/Orchestrator/invocations`, not `/invocations` alone - see "Fourth review".
+This step still can't finish end to end until U2 (the model block) is lifted.
 
 **7. Send me the output of steps 2, 3, 4 and 6**
 

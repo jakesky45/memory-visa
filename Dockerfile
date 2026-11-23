@@ -1,7 +1,9 @@
 FROM --platform=linux/arm64 python:3.12-slim
 WORKDIR /app
 # anthropic[bedrock]: the SDK client for Claude in Amazon Bedrock (src/agents/chat_agent.py).
-RUN pip install --no-cache-dir boto3 "anthropic[bedrock]"
+# httpx[http2]: the Gateway's IdentityInterceptor only resolves a caller's verified
+# identity over HTTP/2 - stdlib urllib can't speak it (src/agents/gateway_client.py).
+RUN pip install --no-cache-dir boto3 "anthropic[bedrock]" "httpx[http2]"
 COPY src/ .
 EXPOSE 8080
 # Without this, stdout is block-buffered for a long-running, non-TTY process -
