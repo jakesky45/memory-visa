@@ -376,7 +376,7 @@
     <div class="toc-label">Contents</div>
     <a href="#why-share-memory">Why share memory</a>
     <a href="#the-problem">The problem</a>
-    <a href="#terms">Getting on the same page</a>
+    <a href="#terms">How a call travels</a>
     <a href="#five-ways">Five ways to share</a>
     <a href="#what-agentcore-ships">What AgentCore ships</a>
     <a href="#lifecycle">The lifecycle</a>
@@ -395,6 +395,7 @@
     <a href="#quickstart">Quickstart</a>
     <a href="#staleness-risk">Staleness between writes</a>
     <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
+    <a href="#glossary">Glossary</a>
   </nav>
 
   <div class="main">
@@ -404,7 +405,7 @@
       <nav>
         <a href="#why-share-memory">Why share memory</a>
         <a href="#the-problem">The problem</a>
-        <a href="#terms">Getting on the same page</a>
+        <a href="#terms">How a call travels</a>
     <a href="#five-ways">Five ways to share</a>
         <a href="#what-agentcore-ships">What AgentCore ships</a>
         <a href="#lifecycle">The lifecycle</a>
@@ -423,6 +424,7 @@
     <a href="#quickstart">Quickstart</a>
         <a href="#staleness-risk">Staleness between writes</a>
     <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
+    <a href="#glossary">Glossary</a>
       </nav>
     </details>
 
@@ -506,20 +508,9 @@
 
     <p>The same mechanism covers Jordan's trickier case too: when he needs an exception, he goes through the exact same grant workflow Maya does. Contractors should get the tightest defaults and the most audited exceptions - full-time status shouldn't be the baseline everyone starts from.</p>
 
-    <h2 id="terms">Getting on the Same Page</h2>
+    <h2 id="terms">How a Call Travels</h2>
 
-    <p>If you're opening the repo for the first time, here is how the pieces fit together:</p>
-
-    <table>
-    <tr><th>Term</th><th>What it is</th></tr>
-    <tr><td><strong>Bedrock AgentCore</strong></td><td>AWS's managed runtime for AI agents. A <strong>Gateway</strong> fronts your tools behind one authenticated endpoint; <strong>Memory</strong> holds agent memory, namespaced per tenant, in two tiers - <strong>short-term</strong> (the raw event, written and readable immediately) and <strong>long-term</strong> (facts automatically extracted from short-term memory by a background process, searchable only once that extraction finishes); a <strong>Policy Engine</strong> evaluates access rules before a request reaches your code at all.</td></tr>
-    <tr><td><strong>Cedar</strong></td><td>The policy language AWS open-sourced for exactly this - <code>permit</code>/<code>forbid</code> statements over principal, action, and resource, default-deny, evaluated by the Policy Engine.</td></tr>
-    <tr><td><strong>Cognito</strong></td><td>The identity provider. Every caller authenticates here first; org and department claims can ride along as JWT claims for Cedar to read as tags on the principal - though as the <code>EngineeringTools</code> gate below shows, the access tokens this project's Gateway actually validates don't carry them, so that path never fires here.</td></tr>
-    <tr><td><strong>MCP (Model Context Protocol)</strong></td><td>The open protocol an AI client uses to discover and call tools. <code>tools/list</code> says what's callable; <code>tools/call</code> invokes one. Client-agnostic by design - that's what makes bring-your-own-client possible at all.</td></tr>
-    <tr><td><strong>Gateway Target</strong></td><td>What the Gateway actually forwards a call to - a Lambda function, an HTTP endpoint, or another AgentCore Runtime. A target's real tools are what Cedar's own schema validates actions against.</td></tr>
-    </table>
-
-    <p>Put together, every call takes the same path regardless of which tool it's actually reaching for:</p>
+    <p>Every call takes the same path, whichever tool it is for. (The terms are in the <a href="#glossary">glossary</a> at the end.)</p>
 
     <div class="sketch col">
       <div class="box wobble-a">AI Client<br><span class="sub">Claude / Cursor / Kiro</span></div>
@@ -1067,6 +1058,27 @@ python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --othe
     <p>Clone the repo, run <code>make eval</code>, and try to break it: request access as someone who shouldn't get it, approve your own request, replay a token after its window closes. If anything gets through that shouldn't, that's a real issue. Go fix it.</p>
 
     <p>Maya still gets her three days. She just doesn't spend any of them waiting on a ticket.</p>
+
+    <h2 id="glossary">Glossary</h2>
+
+    <table>
+    <tr><th>Term</th><th>What it is</th></tr>
+    <tr><td><strong>Bedrock AgentCore</strong></td><td>AWS's managed services for running AI agents. This post uses four: Gateway, Memory, Policy and Runtime.</td></tr>
+    <tr><td><strong>Gateway</strong></td><td>One authenticated endpoint in front of your tools. It checks the caller's token, runs the policy engine, and forwards the call.</td></tr>
+    <tr><td><strong>Gateway target</strong></td><td>What the Gateway forwards a call to: a Lambda function, an HTTP endpoint, or an AgentCore Runtime.</td></tr>
+    <tr><td><strong>Memory</strong></td><td>AgentCore's store for what agents learn, split into namespaces. Short-term memory is the raw event, readable at once. Long-term memory is the records a model extracts from those events a minute or two later, found by meaning.</td></tr>
+    <tr><td><strong>Namespace</strong></td><td>A named part of Memory. Here: one for each person, one for each department, and one for each org's published facts.</td></tr>
+    <tr><td><strong>Cedar</strong></td><td>The open-source policy language the policy engine evaluates: <code>permit</code> and <code>forbid</code> rules over a principal, an action and a resource. Anything not permitted is denied.</td></tr>
+    <tr><td><strong>Dogwood</strong></td><td>An extension of Cedar for rules about what happened earlier in a session.</td></tr>
+    <tr><td><strong>Cognito</strong></td><td>The identity provider. Each person signs in here and gets an access token. That token carries no org or department, which is why the interceptor asks Cognito for them.</td></tr>
+    <tr><td><strong>Interceptor</strong></td><td>A Lambda the Gateway runs before a tool. Here it turns the caller's token into their verified email, org and department.</td></tr>
+    <tr><td><strong>MCP</strong></td><td>Model Context Protocol, the open protocol an AI client uses to find and call tools. <code>tools/list</code> says what can be called; <code>tools/call</code> calls one.</td></tr>
+    <tr><td><strong>Grant</strong></td><td>An approved exception: one person may read one namespace until a set time.</td></tr>
+    <tr><td><strong>Visa</strong></td><td>The temporary AWS credentials for one read, limited by IAM to one namespace and one deadline.</td></tr>
+    <tr><td><strong>Session policy</strong></td><td>A policy attached when temporary credentials are requested from STS. It can only narrow what the role allows.</td></tr>
+    </table>
+
+    
 
     </div>
   </div>
