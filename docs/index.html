@@ -710,7 +710,7 @@ Maya searches org_robotinc_published, with no grant:
 Maya writes to org_robotinc_published
                             403  "no static claim, and no active grant"</code></pre>
 
-    <p>No request, no approval, no wait, and it was searchable at once because nothing had to be extracted. IAM is set to hold this line too: the tools Lambda may write a record directly only where the namespace looks like <code>org_*_published</code>. The allowed case is proven by the run above. The refusal has its own proof script, <code>demo/publish_boundary_demo.py</code>, which has not been run yet.</p>
+    <p>No request, no approval, no wait, and it was searchable at once because nothing had to be extracted. IAM is set to hold this line too: the tools Lambda may write a record directly only where the namespace looks like <code>org_*_published</code>. A proof script, <code>demo/publish_boundary_demo.py</code>, takes a role with only that permission and calls AWS directly: a write to a published namespace is allowed, and the same write to a department's namespace or a person's own is refused with <code>AccessDeniedException</code>.</p>
 
     <p>What is not built yet: taking a published fact back, or replacing it with a newer one.</p>
 
@@ -1075,7 +1075,7 @@ python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --othe
 
     <h2 id="bet-on-the-pattern">Bet on the Pattern, Not the Platform</h2>
 
-    <p>Everything else here you can verify yourself. Three days before this post went out, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a> - solving runtime ingress rather than cross-domain memory grants, yet landing on the exact same primitive: a request interceptor extracting verified identity ahead of Cedar policy enforcement. Two teams converging on the same architecture independently is what happens once identity propagation is taken seriously.</p>
+    <p>Everything else here you can verify yourself. In November 2026, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a> - solving runtime ingress rather than cross-domain memory grants, yet landing on the exact same primitive: a request interceptor extracting verified identity ahead of Cedar policy enforcement. Two teams converging on the same architecture independently is what happens once identity propagation is taken seriously.</p>
 
     <p>That matters because this stack moves fast. AgentCore only hit <a href="https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-agentcore-available">general availability</a> in October 2025, and the original Bedrock Agents service <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html">closed to new customers</a> under ten months later. Nothing in <code>memory-visa</code> bets on any single managed runtime staying put: Cedar, OAuth, and MCP are open standards that outlive any one vendor's SDK. When the underlying runtime inevitably shifts again, the part that survives is the pattern - verified identity, policy enforcement at the gateway, and an external entitlements layer sitting on top of static isolation. Swap the gateway, let every department pick its own agent framework, and the boundary model still holds.</p>
 
