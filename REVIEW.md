@@ -55,6 +55,73 @@ the examples page (`example-policies-temporal`), not a summary of them.
 | W5 | Could Dogwood enforce the grant anyway? | **Probably, and we have not tried.** A policy could permit `memory_search` only when a tool in Maya's own session returned an approved grant for that namespace. That would give the policy engine real work (C1). Costs, from the pages: every request must then carry the `x-amzn-bedrock-agentcore-policy-session-id` header or it fails; the tool must declare an output schema for the policy to read its result; a policy change ends open sessions with a 409 | Said in the post in two sentences. Not built. Worth a slide: "what we would try next" |
 | W6 | "Dogwood" is AWS's name; it "extends the authorization model of Cedar" | **True.** Also: it is open source, and temporal policies are available in Europe (London) | Wording already matches |
 
+### Exploring: let Dogwood enforce the grant
+
+23 November 2026. An idea, not a plan. From the AWS pages read in the ninth review, plus
+the examples page.
+
+**The idea.** A crossing becomes two calls in Maya's own session. First a tool that checks
+the grant table (`check_grant`, for one namespace). Then the read. A temporal policy permits
+the read only if the check succeeded earlier in the same session, for the same namespace:
+
+```
+permit (
+    principal is AgentCore::OAuthUser,
+    action == AgentCore::Action::"AccessRequestTools___visa_read",
+    resource == AgentCore::Gateway::"<gateway ARN>"
+)
+when temporal {
+    formerly within 5m AgentCore::Action::"AccessRequestTools___check_grant"::response{
+        eventResource: resource,
+        input.namespace: context.input.namespace,
+        output.active: true
+    }
+};
+```
+
+This is a sketch. It has not been sent to AWS, so the syntax is not proven.
+
+**What it needs**
+
+| Need | Why |
+|---|---|
+| A separate tool for the crossing (`visa_read`) | Permits add up. `memory_search` has a plain permit for a person's own memory, so a temporal permit on it would change nothing. The crossing needs its own action with no plain permit |
+| `check_grant` declares an output schema | A policy can read `output.*` only if the tool declares it. Lambda targets usually declare inputs only |
+| A plain permit for `check_grant` | Only a permitted call that completes is recorded as a `response` |
+| A session ID header on every request to the Gateway | Once the engine holds one temporal policy, a request with no `x-amzn-bedrock-agentcore-policy-session-id` fails. That is every client: the AI clients, the `call` helper, the agent |
+| `bedrock-agentcore:GetWorkloadAccessToken` on the Gateway role | AWS requires it for temporal policies |
+
+**What it buys, and what it does not**
+
+| | |
+|---|---|
+| Buys | The rule "no crossing without a checked grant" is a declared policy in the policy engine, refused at the Gateway before any of our code runs, and visible in the policy metrics. Cedar gets real work (C1). A new session has no history, so it is refused: the caller choosing the session ID does not weaken a permit of this kind |
+| Does not buy | A second opinion. `check_grant` is our code reading our table, the same as today. The policy enforces the order of two calls, not the truth of the grant |
+| Is worse than the visa at | Time. The window is fixed in the policy text, not taken from the grant. A check one second before the grant ends allows reads for the whole window after it. IAM stops at the grant's exact end |
+| Cannot do | Revocation. Liam's `revoke_access` is in his session, so the policy never sees it. It takes effect at the next `check_grant` |
+| Costs | The header on every request. A policy change ends open sessions with a 409. Quotas: 20 temporal policies, 3 operators each, 24 hours at most |
+
+So the three layers would each do one job: the table holds the approval, the policy engine
+enforces that it was checked, IAM enforces the namespace and the deadline of the read.
+
+**One thing in the AWS pages that does not add up.** The session page says two callers with
+the same session ID are isolated on an authenticated Gateway. The examples page says, about
+approvals by more than one person, "correlate on `eventPrincipal`", which only makes sense
+if one session can hold events from more than one principal. If it can, a policy could see
+Liam's `approve_access` directly and the idea above gets much stronger. Only a test settles
+it.
+
+**A spike that would settle it, without touching the main Gateway.** A second small Gateway
+on the same Cognito pool, with its own policy engine, one Lambda and two tools. Four checks:
+
+1. Maya checks, then reads, same session: expect allowed.
+2. Maya reads with no check: expect refused.
+3. Liam checks in session X, Maya reads in session X: expect refused, if sessions are per caller. This is the test of the quote in the blog.
+4. Maya checks, waits past the window, reads: expect refused.
+
+About half a day. Recommended before the talk only if the Summit date leaves room (D8). It
+should not go into the main path first, because of the header on every request.
+
 ### Seventh review: people or agents
 
 23 November 2026. Jake's question: "we talk about agents being allowed or humans being
