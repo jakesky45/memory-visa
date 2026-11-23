@@ -24,6 +24,177 @@ Four stages. Nothing in a later stage is built until the one before it is proven
 | 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | After stage 2 |
 | 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
 
+### Runbook: stage 2 on another machine
+
+Everything needed to deploy and prove the visa from a clean machine. The steps are the
+action points A1 to A10, written out as commands. Nothing here has been run against AWS
+yet, so read each output before the next step.
+
+**0. What the machine needs**
+
+| Tool | Used for | Check |
+|---|---|---|
+| Git and the GitHub CLI | Clone and push | `gh auth status` shows `jakesky45` |
+| Python 3.10 or later | Tests, CDK app, demo script | `python3 --version` |
+| Node.js and the CDK CLI | Deploy | `npx cdk --version` |
+| AWS CLI, signed in to the sandbox account | Deploy, tokens, the proof | `aws sts get-caller-identity` |
+| Docker, with `buildx` | The orchestrator image (arm64) | `docker buildx version` |
+| `jq`, `curl` | Calling the tools | `jq --version` |
+
+**1. Clone, and set the identity for this repository**
+
+A fresh clone uses the machine's global git identity. Set the personal one before any commit.
+
+```bash
+git clone https://github.com/jakesky45/memory-visa.git && cd memory-visa
+git config user.name "jakesky45"
+git config user.email "jakesky45@users.noreply.github.com"
+git log -1 --format='%h %s'      # 6725930 or later
+```
+
+**2. Run the tests (no AWS needed)**
+
+```bash
+python3 -m venv cdk/.venv && source cdk/.venv/bin/activate
+pip install -r cdk/requirements.txt pytest boto3
+make eval                        # expect: 49 passed
+```
+
+**3. Check what the deploy will change**
+
+```bash
+export AWS_REGION=eu-west-2
+cd cdk && npx cdk diff --all && cd ..
+```
+
+Expected, and nothing else:
+
+- A new IAM role, `memory-visa-reader`, trusted by the tools Lambda.
+- The tools Lambda: five new environment variables, and permission to write events, to assume
+  the new role, and to apply the Guardrail.
+- The runtime role loses memory and table access. The runtime has no environment variables.
+- The tools target: `memory_search` and `memory_write` added; `requester_org` removed from
+  `request_access` and `include_tools` added.
+- The Cedar permit lists the two new tools.
+- Three new parameters under `/memory-visa/`.
+- The Guardrails stack: four regex rules where there were three, and no PII rules.
+
+If the diff fails on the Gateway or the Policy resources, the CDK library is older than the
+one the stack was written with: `pip install -U aws-cdk-lib`.
+
+**4. Build and push the orchestrator image, and record its digest**
+
+`server.py` changed, and the stack names the image by digest.
+
+```bash
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+REPO=$ACCOUNT.dkr.ecr.eu-west-2.amazonaws.com/memory-visa-orchestrator
+aws ecr describe-repositories --repository-names memory-visa-orchestrator >/dev/null 2>&1 \
+  || aws ecr create-repository --repository-name memory-visa-orchestrator
+aws ecr get-login-password | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.eu-west-2.amazonaws.com
+docker buildx build --platform linux/arm64 -t $REPO:latest --push .
+aws ecr describe-images --repository-name memory-visa-orchestrator --image-ids imageTag=latest \
+  --query 'imageDetails[0].imageDigest' --output text
+```
+
+Put the digest that the last command prints into `cdk/stacks/agentcore_stack.py`, in the
+`container_uri` line (`@sha256:...`). Commit that change.
+
+**5. Deploy, with your own role allowed to run the proof**
+
+```bash
+ROLE_NAME=$(aws sts get-caller-identity --query Arn --output text | cut -d/ -f2)
+MY_ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)
+echo "$MY_ROLE_ARN"              # arn:aws:iam::<account>:role/...  (not an sts assumed-role ARN)
+
+cd cdk && npx cdk deploy --all --require-approval never -c visaDemoPrincipalArn="$MY_ROLE_ARN" && cd ..
+```
+
+If the deploy fails on the Guardrail with a message about a regex, remove the
+`aws-secret-access-key` rule in `cdk/stacks/guardrails_stack.py` and deploy again. That
+pattern has not been tried against Bedrock.
+
+**6. Sign in as each person, and define one helper**
+
+Tokens last one hour. `<password>` is whatever you set; it is never written to the repository.
+
+```bash
+USER_POOL_ID=$(aws ssm get-parameter --name /memory-visa/user-pool-id --query Parameter.Value --output text)
+USER_CLIENT_ID=$(aws ssm get-parameter --name /memory-visa/user-client-id --query Parameter.Value --output text)
+GATEWAY_URL=$(aws ssm get-parameter --name /memory-visa/gateway-url --query Parameter.Value --output text)
+
+for u in maya liam; do
+  aws cognito-idp admin-set-user-password --user-pool-id "$USER_POOL_ID" --username $u --password '<password>' --permanent
+done
+
+token() { aws cognito-idp initiate-auth --client-id "$USER_CLIENT_ID" --auth-flow USER_PASSWORD_AUTH \
+  --auth-parameters USERNAME=$1,PASSWORD='<password>' --query AuthenticationResult.AccessToken --output text; }
+MAYA=$(token maya); LIAM=$(token liam)
+
+# call <token> <tool> '<json arguments>'
+call() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"AccessRequestTools___$2\",\"arguments\":$3}}" \
+  | sed -n 's/^data: //p' | jq '.result // .error'; }
+```
+
+**7. Write, then read (A6, A7)**
+
+```bash
+call "$LIAM" memory_write '{"namespace":"org_robotinc_dept_legal","text":"The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}'
+sleep 90                         # long-term extraction runs in the background
+call "$LIAM" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'
+```
+
+Expected: the write returns an event ID; Liam's search returns the record; Maya's returns a
+403 with "no access to namespace".
+
+If the write or the search fails, read the Lambda's log first:
+
+```bash
+FN=$(aws lambda list-functions --query "Functions[?contains(FunctionName,'AccessRequestTools')].FunctionName" --output text)
+aws logs tail "/aws/lambda/$FN" --since 10m
+```
+
+**8. The proof that AWS enforces the visa (A8)**
+
+```bash
+python3 demo/visa_credentials_demo.py \
+  --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60
+```
+
+Expected:
+
+```
+1. org_robotinc_dept_legal          ALLOWED: 1 record(s), first: "The X-7 battery pack ..."
+2. org_robotinc_dept_finance        REFUSED by AWS: AccessDeniedException
+3. org_robotinc_dept_legal          REFUSED by AWS: AccessDeniedException
+```
+
+This is the decision point. If lines 2 and 3 are refused, the idea holds. The table under
+"If the proof does not match" says what each other result means.
+
+**9. One grant, end to end (A9)**
+
+```bash
+call "$MAYA" request_access '{"target_org":"robotinc","target_department":"legal","reason":"Export-control classification for the X-7 before the Q4 shipment.","duration_hours":0.05}'
+call "$LIAM" list_pending '{}'
+call "$LIAM" approve_access '{"grant_id":"<grant_id from the request>"}'
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # allowed
+call "$MAYA" memory_write '{"namespace":"org_robotinc_dept_legal","text":"Supplier X is cleared."}'   # 403: a grant never writes
+call "$MAYA" whoami '{}'
+sleep 200                        # the window was 3 minutes
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # 403 again
+```
+
+**10. Send the outputs, then tidy up**
+
+Paste the outputs of steps 7, 8 and 9 into the conversation. They replace the "expected
+output" transcripts in the blog.
+
+To stop the billing when you are finished for the day: `cd cdk && npx cdk destroy --all`.
+
 ### Stage 1: what was done
 
 | Finding | What changed | How it was checked |
