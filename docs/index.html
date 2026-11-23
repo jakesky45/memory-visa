@@ -1093,7 +1093,7 @@ python3 demo/publish_boundary_demo.py     # IAM refuses a direct write outside a
     <tr><td><strong>Namespace</strong></td><td>A named part of Memory. Here: one for each person, one for each department, and one for each org's published facts.</td></tr>
     <tr><td><strong>Cedar</strong></td><td>The open-source policy language the policy engine evaluates: <code>permit</code> and <code>forbid</code> rules over a principal, an action and a resource. Anything not permitted is denied.</td></tr>
     <tr><td><strong>Dogwood</strong></td><td>An extension of Cedar for rules about what happened earlier in a session.</td></tr>
-    <tr><td><strong>Cognito</strong></td><td>The identity provider. Each person signs in here and gets an access token. That token carries no org or department, which is why the interceptor asks Cognito for them.</td></tr>
+    <tr><td><strong>Cognito</strong></td><td>The identity provider. Each person signs in here and gets an access token. By default, Cognito access tokens omit custom attributes - so a pre-token-generation trigger copies org and department onto the token for Cedar, while the interceptor resolves the caller's verified identity directly via GetUser.</td></tr>
     <tr><td><strong>Interceptor</strong></td><td>A Lambda the Gateway runs before a tool. Here it turns the caller's token into their verified email, org and department.</td></tr>
     <tr><td><strong>MCP</strong></td><td>Model Context Protocol, the open protocol an AI client uses to find and call tools. <code>tools/list</code> says what can be called; <code>tools/call</code> calls one.</td></tr>
     <tr><td><strong>Grant</strong></td><td>An approved exception: one person may read one namespace until a set time.</td></tr>
