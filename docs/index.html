@@ -722,14 +722,31 @@ Maya writes to org_robotinc_published
 
     <p>The part worth noticing is what did <em>not</em> change. A wider search did not get wider credentials. Each namespace is still its own read, with its own visa and its own audit entry. Searching four namespaces is four narrow reads. Live, that took two to four seconds, which is the honest cost of doing it this way.</p>
 
-    <pre><code>Maya searches, no namespace, no grant:
-  searched: org_robotinc_dept_engineering, org_robotinc_published
-  result:   Legal's published fact, access "published"
-  (org_robotinc_dept_legal is not searched)
+    <p>Raw, from a real call, no grant yet - trimmed to the two namespaces that matter here:</p>
 
-Liam approves a grant. The same search again:
-  five records across org_robotinc_published and org_robotinc_dept_legal
-  Legal's own records say access "grant", with the grant ID, the approver and the expiry</code></pre>
+    <pre><code>{"records": [
+  {"text": "The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal.",
+   "namespace": "org_robotinc_published", "access": {"via": "published"}, "score": 0.577, ...},
+  {"text": "Maya prefers export-control facts to be cited with the regulation code.",
+   "namespace": "org_robotinc_user_maya_at_robotinc_dot_example", "access": {"via": "membership"}, "score": 0.337, ...}
+ ],
+ "searched": ["org_robotinc_dept_engineering", "org_robotinc_user_maya_at_robotinc_dot_example", "org_robotinc_published"],
+ "failed": []}</code></pre>
+
+    <p><code>org_robotinc_dept_legal</code> is not in <code>searched</code> - no grant, no read. Maya requests it, Liam approves, the same call again:</p>
+
+    <pre><code>{"records": [
+  {"text": "The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal.",
+   "namespace": "org_robotinc_published", "access": {"via": "published"}, "score": 0.577, ...},
+  {"text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment.",
+   "namespace": "org_robotinc_dept_legal",
+   "access": {"via": "grant", "grant_id": "72c2e6a7-...", "approved_by": "liam@robotinc.example", "expires_at": "2026-11-23T15:26:32+00:00"},
+   "score": 0.496, ...},
+  "... three more records from org_robotinc_dept_legal, same grant, same access block ..."
+ ],
+ "searched": ["org_robotinc_dept_engineering", "org_robotinc_user_maya_at_robotinc_dot_example",
+              "org_robotinc_published", "org_robotinc_dept_legal"],
+ "failed": []}</code></pre>
 
     <h2 id="owner-sees">What the Owner Sees Afterwards</h2>
 
@@ -863,10 +880,10 @@ grant_activity as Priya (neither):
         <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
         <span class="titletext">claude &mdash; Jordan's session</span>
       </div>
-      <pre><span class="prompt">&gt; request access into engineering, reason "arm module calibration specs for Q3", 4 hours</span>
+      <pre><span class="prompt">&gt; request access into engineering, reason "arm module calibration specs for Q3", 4 hours, and ask for the tools too</span>
 
-    <span class="tool">&#9679; request_access(target_org: "robotinc", target_department: "engineering", reason: "arm module calibration specs for Q3", duration_hours: 4)</span>
-      <span class="dim">grant_id: "a9f27e14-..."</span>
+    <span class="tool">&#9679; request_access(target_org: "robotinc", target_department: "engineering", reason: "arm module calibration specs for Q3", duration_hours: 4, include_tools: true)</span>
+      <span class="dim">grant_id: "fbc36a47-..."</span>
       <span class="dim">status: pending</span></pre>
     </div>
 
@@ -896,7 +913,7 @@ grant_activity as Priya (neither):
 
     <h2 id="what-a-caller-gets">What a Caller Actually Gets</h2>
 
-    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active (the grant and its times are from the run on 21 November; the namespace fields are shown as <code>whoami</code> returns them today):</p>
+    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active:</p>
 
     <div class="terminal">
       <div class="titlebar">
@@ -914,7 +931,7 @@ grant_activity as Priya (neither):
           "static_namespaces": ["org_robotinc_user_jordan_at_contractor_dot_example"],
           "published_namespace": "org_robotinc_published",
           "granted_namespaces": [
-            {"namespace": "org_robotinc_dept_engineering", "expires_at": "2026-11-21T23:29:01+00:00"}
+            {"namespace": "org_robotinc_dept_engineering", "expires_at": "2026-11-23T15:18:05+00:00"}
           ]
         },
         <span class="ok">"domain_tools": ["check_shipping_classification", "generate_packaging_manifest", "query_firmware_specs"],</span>
