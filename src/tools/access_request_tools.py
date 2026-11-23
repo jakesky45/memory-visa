@@ -204,11 +204,16 @@ def _revoke_access(args: dict) -> dict:
 # GrantStore either way. Everything else in this response (memory
 # namespaces, domain_tools) is computed live from the same
 # GrantStore/allowed_tools() the rest of the project already proves.
-def _live_gateway_tools() -> dict:
-    if _DEPARTMENT_GATE == "ACTIVE":
+def _live_gateway_tools(department: str | None) -> dict:
+    """What the one real Gateway tool will do for THIS caller. The Cedar gate looks at
+    the department in the caller's token and nothing else, so a grant does not open
+    it - whoami says so, and does not leave the caller to find out from a refusal."""
+    if _DEPARTMENT_GATE == "ACTIVE" and department == "engineering":
+        state = "you can call this - a Cedar policy keeps it for Engineering, and your department is engineering"
+    elif _DEPARTMENT_GATE == "ACTIVE":
         state = (
-            "Engineering only - a Cedar policy refuses any caller whose access token has no "
-            "department claim equal to 'engineering'"
+            "refused for you - a Cedar policy keeps it for Engineering, and your department is "
+            f"{department or 'not set'}. A grant does not change this: the policy looks at department only"
         )
     else:
         state = (
@@ -240,7 +245,7 @@ def _whoami(args: dict) -> dict:
             ],
         },
         "domain_tools": sorted(allowed_tools(claims, _grants, now)),
-        "live_gateway_tools": _live_gateway_tools(),
+        "live_gateway_tools": _live_gateway_tools(department),
     }
 
 

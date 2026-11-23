@@ -219,4 +219,19 @@ def test_whoami_says_whether_the_department_gate_is_enforced(tools, monkeypatch)
     tool = "EngineeringTools___check_shipping_classification"
     assert "blocks nobody" in call(tools, "whoami", MAYA)[1]["live_gateway_tools"][tool]
     monkeypatch.setattr(tools, "_DEPARTMENT_GATE", "ACTIVE")
-    assert "Engineering only" in call(tools, "whoami", MAYA)[1]["live_gateway_tools"][tool]
+    assert call(tools, "whoami", MAYA)[1]["live_gateway_tools"][tool].startswith("you can call this")
+    assert call(tools, "whoami", LIAM)[1]["live_gateway_tools"][tool].startswith("refused for you")
+
+
+def test_whoami_does_not_let_a_grant_look_like_it_opens_the_real_gateway_tool(tools, monkeypatch):
+    """Jordan: no department, and a grant that carries Engineering's tools in this project's
+    own model. The Cedar gate still refuses him, and whoami must say so in the same answer."""
+    jordan = {"_verified_email": "jordan@contractor.example", "_verified_org": "robotinc", "_verified_department": None}
+    monkeypatch.setattr(tools, "_DEPARTMENT_GATE", "ACTIVE")
+    grant_id = request(tools, identity=jordan, target_department="engineering", include_tools=True)[1]["grant_id"]
+    call(tools, "approve_access", MAYA, grant_id=grant_id)
+
+    answer = call(tools, "whoami", jordan)[1]
+    assert "check_shipping_classification" in answer["domain_tools"]
+    live = answer["live_gateway_tools"]["EngineeringTools___check_shipping_classification"]
+    assert live.startswith("refused for you") and "not set" in live and "grant does not change this" in live

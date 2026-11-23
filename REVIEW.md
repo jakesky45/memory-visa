@@ -102,7 +102,7 @@ Three things in the blog changes that came with it:
 | # | Severity | Finding | State |
 |---|---|---|---|
 | Y1 | Medium | **Jordan's two `whoami` transcripts were edited** to show today's "Engineering only" text. They were captured before the gate was switched on, when the field said something else. This is E1 again | Fixed. The field is trimmed to `{ ... }` in both, and the paragraph under them says what it said then and what it says now |
-| Y2 | Medium | **A grant's tools and the real Gateway tool now disagree in plain sight.** Jordan's `whoami` lists `check_shipping_classification` among the tools his grant carries, and the Gateway refuses him that tool, because the gate looks at department only | Said in the post, in "What a Grant Unlocks". **Not fixed in the design.** To join them, the policy would have to know about grants, which is the Dogwood question again |
+| Y2 | Medium | **A grant's tools and the real Gateway tool now disagree in plain sight.** Jordan's `whoami` lists `check_shipping_classification` among the tools his grant carries, and the Gateway refuses him that tool, because the gate looks at department only | Said in the post. **`whoami` now says it too** (written, 2 tests, not deployed): for each caller it reports "you can call this" or "refused for you ... a grant does not change this". The design is unchanged: joining the two would mean the policy knowing about grants |
 | Y3 | Low | "IAM decides how long a crossing lasts" left out the namespace | Fixed |
 | Y4 | Low | The cost of the Essentials plan was not looked up | **Open, Jake**, if this stays deployed |
 
@@ -384,6 +384,7 @@ not need one.
 | 8d | Claude | ~~Capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10)~~ **Done, 23 November 2026** | "Sixth review" |
 | 8e | Jake | Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
 | 8f | Claude | ~~Deploy N10 and run its five checks, then deploy again with `-c departmentGate=active`~~ **Done, 23 November 2026: the gate is active and proven** | "N10: the department gate" |
+| 8g | Jake | `whoami`: deploy (`cdk deploy MemoryVisaAgentCore -c departmentGate=active`; only the tools Lambda changes), then capture Jordan again: request with `include_tools`, Maya approves, `whoami`, wait for the window, `whoami`. Paste both answers over the two transcripts in "What a Caller Actually Gets" and put the `live_gateway_tools` field back. Expected for Jordan: `domain_tools` lists the three Engineering tools while the grant is open, and `live_gateway_tools` says "refused for you ... your department is not set. A grant does not change this" both times. Also run `eng "$JORDAN"` once: expected refused | "Review of the N10 run", Y1 and Y2 |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
