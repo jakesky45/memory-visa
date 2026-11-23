@@ -553,7 +553,14 @@
 
     <p>A grant is a handshake between two people: one asks and another approves, often hours apart. The approval has to be stored somewhere that outlives both sessions and that both people's requests can reach. That is a table, not a session history.</p>
 
-    <p>To be fair to Dogwood, it could still enforce the result. A policy could require that a tool call in Maya's own session reported an approved grant before her read is allowed. That would use the same table, and it is not built here.</p>
+    <p>We tested both halves of that on a separate Gateway, so it is observed and not only read:</p>
+
+    <ul>
+    <li><strong>One caller cannot see another's history.</strong> User B called a tool in session X. A moment later user A, sending the same session ID, was refused an action that needed that call. Sessions are per caller, as the AWS page says.</li>
+    <li><strong>A policy can enforce the order of one caller's own calls.</strong> A read was allowed only after a grant check for the same namespace had succeeded in the same session, and refused with no check, with a check for another namespace, with a check that failed or returned "not active", and once the policy's one-minute window had passed.</li>
+    </ul>
+
+    <p>So Dogwood could be a second gate in front of a crossing: "no read unless this caller's grant was checked first". It is not in this build, for three reasons. The window is fixed in the policy text and not taken from the grant, so it is less exact than the deadline IAM enforces. It cannot see a revocation, which happens in the owner's session. And once a policy engine holds one such policy, every request to the Gateway must carry a session ID header or it fails.</p>
 
     <p>That's why the grant lives in its own table, <code>GrantStore</code>. Cedar does less here than the name on the box suggests, and it is better to say so: today it holds one baseline <code>permit</code> for the tools, and the department rule it was meant to enforce cannot fire on this auth path (more on that below). The grant is checked in the tools Lambda, and the read it allows is then enforced by IAM. Static isolation stays as it is; <code>GrantStore</code> sits on top as an audited exception layer.</p>
 

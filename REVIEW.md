@@ -52,7 +52,7 @@ the examples page (`example-policies-temporal`), not a summary of them.
 | W2 | A Gateway with no authentication is different | **True.** "All callers who supply the same session ID share a single temporal policy event stream" | Not in the post; not relevant to this Gateway |
 | W3 | "no amount of policy configuration will make it hold an approval"; README and pitch: "can't model a two-person approval" | **Too strong.** AWS's first example of a temporal policy is "require a prior approval": `disburse_payment` is allowed only after `approve_claim` returned in the same session. What a policy cannot see is an approval made by a second person in their own session | **Fixed** in the blog, README and pitch: "cannot see a second person's approval" |
 | W4 | So is the grant table needed? | **Yes, by inference, not by an AWS statement.** History is "scoped to the session", a session belongs to one caller, it ends 24 hours after its last use, and a condition's window is 24 hours at most. An approval by another person must be stored outside the session | Said in the post as our reasoning |
-| W5 | Could Dogwood enforce the grant anyway? | **Tried, and the answer is no, not for a two-person approval.** A spike confirmed live, 23 November 2026, that it can enforce "this caller checked before reading" (a self-serve pattern), but a second caller's check is invisible to the first caller's session even with the same session ID. See "Exploring: let Dogwood enforce the grant" for the ten checks | Said in the post in two sentences. Confirmed, not built into the main stack - the grant table remains the only place a two-person approval can live |
+| W5 | Could Dogwood enforce the grant anyway? | **Yes for the idea as written, no for the stronger form. Tested live, 23 November 2026.** A policy can enforce "this caller's grant was checked before this read", for the same namespace, reading the check's output, within a window (checks 1 to 3, 5, 7 to 9). It cannot see a second caller's call, even with the same session ID (check 4). So the check tool must read the grant table; the approval itself can never be the event the policy matches | In the post, as observed. Not built into the main stack: see "Exploring: let Dogwood enforce the grant" for why |
 | W6 | "Dogwood" is AWS's name; it "extends the authorization model of Cedar" | **True.** Also: it is open source, and temporal policies are available in Europe (London) | Wording already matches |
 
 ### Exploring: let Dogwood enforce the grant
@@ -148,15 +148,31 @@ gating is the two temporal policies, added separately, after. Changed to
  9. A: check_grant, wait past the 1m window, then visa_read_a            DENY   ok
 ```
 
-**Check 4 is answered, cleanly: DENY.** Liam's `check_grant` event, in session X, is
-invisible to Maya's `visa_read_a` request in that same session ID a moment later. Sessions
+**Check 4 is answered, cleanly: DENY.** User B's `check_grant` event, in session X, is
+invisible to user A's `visa_read_a` request in that same session ID a moment later. (The two
+were the throwaway users `spike-b` and `spike-a`, standing in for Liam and Maya.) Sessions
 are isolated per caller, exactly as the AWS session page says - the "correlate on
 `eventPrincipal`" wording on the examples page does not mean what it looked like it might
-mean. **The idea above does not get stronger.** Dogwood can enforce "this same caller
+mean. **The idea above works as written, and does not get stronger.** Dogwood can enforce "this same caller
 checked before reading" (checks 0-3, 5-9 all confirm the mechanism works exactly as
 designed for that), but it cannot see a second person's approval, full stop. W4's
 conclusion stands without qualification: the grant table is the only place a two-person
 approval can live.
+
+**Review of the run (Claude).** The result is sound and the ten lines match what the
+script expects. Three notes:
+
+- "DENY" on check 6 is the script's word for any refusal. That one is the missing session
+  ID failing validation, which is the cost of having a temporal policy on an engine.
+- Check 5 is useful by itself: a tool that fails is not recorded as a `response`, so a
+  policy can gate on "the check succeeded" with no output schema at all.
+- The summary lines are recorded here, not the raw output. The raw output would show that
+  B's own check in check 4 was allowed, which the conclusion depends on. If you still have
+  it, paste it in.
+
+**Decision: not built into the main Gateway.** The policy's window is fixed in its text,
+so it is less exact than the IAM deadline; it cannot see a revocation; and every request
+would need the session ID header. The spike code stays in the repo as the evidence.
 
 Deployed, tested, torn down: the policies, the two throwaway Cognito users, and the spike
 stack are all gone. The main stacks were never touched - confirmed, `aws cloudformation

@@ -58,8 +58,9 @@ attendees build themselves.
 1. A framework of five patterns for sharing agent memory across teams (three shown live:
    scoped by default, shared by design, the visa; two described), with the visa positioned as
    the exception path, not the default - and a concrete reason why: a temporal policy in AgentCore
-   (Dogwood) sees one caller's session, so it cannot see a second person's approval. The
-   approval has to live outside the session.
+   (Dogwood) sees one caller's session, so it cannot see a second person's approval
+   (confirmed by a test, not only by the documentation). The approval has to live outside
+   the session.
 2. A working pattern for the approval step itself: real MCP tools the domain owner calls
    from whatever AI client they already use, not a bespoke UI or a Slack app needing admin
    rights nobody wants to request.
