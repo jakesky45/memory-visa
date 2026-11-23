@@ -70,6 +70,25 @@ _FROM = {
 }
 
 
+def access_entry(actor, namespace, event, at, grant_id, query, record_ids, detail) -> dict:
+    """The audit entry for one use of memory. `event` is read, read_refused, write or
+    write_refused. The same shape goes to the in-memory log and to DynamoDB."""
+    entry = {
+        "grant_id": grant_id or f"namespace#{namespace}",
+        "at": at.isoformat(),
+        "event": event,
+        "actor": actor,
+        "target_namespace": namespace,
+        "records": len(record_ids),
+        "record_ids": list(record_ids),
+    }
+    if query is not None:
+        entry["query"] = query[:500]
+    if detail:
+        entry["detail"] = detail[:500]
+    return entry
+
+
 def check_transition(grant: Grant, action: str, now: dt.datetime) -> None:
     """Raise InvalidTransitionError unless `action` may be taken on `grant` now."""
     if grant.status not in _FROM[action]:
@@ -101,6 +120,27 @@ class GrantStore:
                 "at": now.isoformat(),
             }
         )
+
+    def record_access(
+        self,
+        *,
+        actor: str,
+        namespace: str,
+        event: str,
+        at: dt.datetime,
+        grant_id: str | None = None,
+        query: str | None = None,
+        record_ids: tuple[str, ...] = (),
+        detail: str = "",
+    ) -> None:
+        """One use of memory, allowed or refused, in the same trail as the grant's own
+        transitions (REVIEW.md N2, M10). A read under a grant is filed under that grant,
+        so the owner can see what a visitor did with it. Anything else is filed under
+        the namespace."""
+        self.audit_log.append(access_entry(actor, namespace, event, at, grant_id, query, record_ids, detail))
+
+    def audit_trail(self, grant_id: str) -> list[dict]:
+        return sorted((e for e in self.audit_log if e["grant_id"] == grant_id), key=lambda e: e["at"])
 
     def request(self, grant: Grant) -> Grant:
         self._grants[grant.grant_id] = grant

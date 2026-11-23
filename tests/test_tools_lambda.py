@@ -147,3 +147,23 @@ def test_a_grant_carries_tools_only_when_asked_for(tools):
 
 def test_an_unknown_tool_is_a_400(tools):
     assert call(tools, "delete_everything", LIAM)[0] == 400
+
+
+def test_the_owner_sees_what_was_read_under_the_grant(tools):
+    """N2: Liam approves, Maya reads, and Liam can see that she did and what she asked."""
+    call(tools, "memory_write", LIAM, namespace=LEGAL, text="Export control 7A994 blocks Supplier X.")
+    grant_id = request(tools)[1]["grant_id"]
+    call(tools, "approve_access", LIAM, grant_id=grant_id)
+    status, body = call(tools, "memory_search", MAYA, namespace=LEGAL, query="export control")
+    assert body["records"][0]["access"]["via"] == "grant"
+    assert body["records"][0]["access"]["approved_by"] == "liam@robotinc.example"
+    call(tools, "memory_write", MAYA, namespace=LEGAL, text="It is EAR99.")
+
+    status, body = call(tools, "grant_activity", LIAM, grant_id=grant_id)
+    assert status == 200
+    assert [e["event"] for e in body["activity"]] == ["requested", "approved", "read", "write_refused"]
+    read = body["activity"][2]
+    assert read["actor"] == "maya@robotinc.example" and read["query"] == "export control"
+
+    assert call(tools, "grant_activity", MAYA, grant_id=grant_id)[0] == 200, "the requester may see her own grant"
+    assert call(tools, "grant_activity", PRIYA, grant_id=grant_id)[0] == 403, "nobody else may"

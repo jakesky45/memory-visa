@@ -21,7 +21,7 @@ import boto3
 from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
 
-from .grants import Grant, GrantNotFoundError, GrantStatus, InvalidTransitionError, check_transition
+from .grants import Grant, GrantNotFoundError, GrantStatus, InvalidTransitionError, access_entry, check_transition
 
 
 def _to_item(grant: Grant) -> dict:
@@ -72,6 +72,24 @@ class DynamoGrantStore:
                 "actor": grant.approved_by or "",
             }
         )
+
+    def record_access(
+        self,
+        *,
+        actor: str,
+        namespace: str,
+        event: str,
+        at: dt.datetime,
+        grant_id: str | None = None,
+        query: str | None = None,
+        record_ids: tuple[str, ...] = (),
+        detail: str = "",
+    ) -> None:
+        """One use of memory, allowed or refused, in the same trail as the grant's own
+        transitions (REVIEW.md N2, M10). A read under a grant is filed under that grant,
+        so the owner can see what a visitor did with it. Anything else is filed under
+        the namespace."""
+        self._audit_table.put_item(Item=access_entry(actor, namespace, event, at, grant_id, query, record_ids, detail))
 
     def _transition(self, grant: Grant, was: GrantStatus) -> None:
         """Write the grant only if its status is still what this caller read. Two calls

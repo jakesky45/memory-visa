@@ -92,6 +92,19 @@ def deny_request(grants: GrantStore, grant_id: str, approver_email: str, now: dt
     return grants.deny(grant_id, denied_by=approver_email, now=now)
 
 
+def grant_activity(grants: GrantStore, grant_id: str, caller_email: str) -> list[dict]:
+    """What happened to one grant and under it: the request, the decision, and each
+    read and refused write made with it. For the two people the grant concerns: the
+    owner of the target domain, and the person who asked."""
+    grant = grants.get(grant_id)
+    _, org, _, department = grant.target_namespace.split("_", 3)
+    is_owner = owner_of(org, department) == caller_email
+    is_requester = grant.requester_namespace == f"org_{org}_user_{caller_email}"
+    if not (is_owner or is_requester):
+        raise NotDomainOwnerError(f"{caller_email} is not the owner of '{department}' and did not request grant {grant_id}")
+    return grants.audit_trail(grant_id)
+
+
 def revoke_request(grants: GrantStore, grant_id: str, revoker_email: str, now: dt.datetime) -> Grant:
     """Pull back a grant before it would otherwise expire - the break-glass path for an
     active grant. Not a substitute for disabling someone's IdP account entirely when they

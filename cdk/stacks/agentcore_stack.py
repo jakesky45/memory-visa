@@ -103,7 +103,8 @@ permit (
         AgentCore::Action::"AccessRequestTools___revoke_access",
         AgentCore::Action::"AccessRequestTools___whoami",
         AgentCore::Action::"AccessRequestTools___memory_search",
-        AgentCore::Action::"AccessRequestTools___memory_write"
+        AgentCore::Action::"AccessRequestTools___memory_write",
+        AgentCore::Action::"AccessRequestTools___grant_activity"
     ],
     resource == AgentCore::Gateway::"__GATEWAY_ARN__"
 );
@@ -557,6 +558,19 @@ class AgentCoreStack(Stack):
                     "break-glass path. Only the target domain's owner may revoke it. Does not touch "
                     "the requester's own baseline access - revoking someone's account entirely is a "
                     "Cognito admin action, not a grant."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"grant_id": {"type": "string"}},
+                    "required": ["grant_id"],
+                },
+            ),
+            agentcore.CfnGatewayTarget.ToolDefinitionProperty(
+                name="grant_activity",
+                description=(
+                    "What happened to one grant and under it: the request, the decision, and each "
+                    "memory read made with it (who, when, the question, which records), and each "
+                    "refused write. Only the target domain's owner and the requester may see it."
                 ),
                 input_schema={
                     "type": "object",

@@ -139,3 +139,27 @@ def test_two_decisions_that_race_cannot_both_win(store):
 def test_a_missing_grant_is_reported_as_missing(store):
     with pytest.raises(GrantNotFoundError):
         store.approve("no-such-grant", "liam@robotinc.example", T0)
+
+
+def test_a_read_goes_to_the_audit_table_beside_the_grants_own_events(store):
+    """N2: the owner asks for one grant's trail and sees what was read under it."""
+    store.request(a_grant())
+    store.approve("g-1", "liam@robotinc.example", T0 + dt.timedelta(minutes=5))
+    store.record_access(
+        actor="maya@robotinc.example",
+        namespace=LEGAL,
+        event="read",
+        at=T0 + dt.timedelta(minutes=10),
+        grant_id="g-1",
+        query="X-7 classification",
+        record_ids=("mem-1",),
+    )
+    trail = store.audit_trail("g-1")
+    assert [e["event"] for e in trail] == ["requested", "approved", "read"]
+    assert trail[-1]["actor"] == "maya@robotinc.example"
+    assert trail[-1]["record_ids"] == ["mem-1"]
+
+
+def test_a_use_with_no_grant_is_filed_under_the_namespace(store):
+    store.record_access(actor="maya@robotinc.example", namespace=LEGAL, event="read_refused", at=T0, detail="no grant")
+    assert [e["event"] for e in store.audit_trail(f"namespace#{LEGAL}")] == ["read_refused"]

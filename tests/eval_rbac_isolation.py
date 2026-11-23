@@ -136,7 +136,11 @@ def test_eval4_controlled_cross_domain_switching():
 
     # 6. Every transition is in the audit log - nothing happened silently.
     events = [e["event"] for e in grants.audit_log]
-    assert events == ["requested", "approved", "expired"]
+    assert [e for e in events if e in ("requested", "approved", "expired")] == ["requested", "approved", "expired"]
+
+    # 7. So is every use of memory, allowed or refused (tests/test_memory_audit.py).
+    maya_events = [e["event"] for e in grants.audit_log if e.get("actor") == "maya@robotinc.example"]
+    assert maya_events == ["read_refused", "read_refused", "read", "read_refused"]
 
 
 def test_eval5_contractor_has_a_narrower_default_than_an_employee():

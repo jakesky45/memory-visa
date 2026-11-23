@@ -1,10 +1,10 @@
 """Lambda behind the AccessRequestTools Gateway Target - the tier-two MCP
 tools: request_access, list_pending, approve_access, deny_access,
-revoke_access, whoami, memory_search, memory_write.
+revoke_access, whoami, memory_search, memory_write, grant_activity.
 
 This is what lets an approver act through Claude/Cursor directly ("approve
 Maya's pending request") instead of a bespoke UI or a Slack app neither of
-us has admin rights to stand up. One Lambda backs all eight tools; the
+us has admin rights to stand up. One Lambda backs all nine tools; the
 Gateway puts the called tool's name on `context.client_context.custom`
 under `bedrockAgentCoreToolName`, prefixed `{target}___{tool}` - the tool
 *arguments* are the Lambda `event` itself, nothing more.
@@ -42,6 +42,7 @@ whole point is that these tools only work for a real, individual person.
 from __future__ import annotations
 
 import datetime as dt
+import decimal
 import json
 import os
 
@@ -52,6 +53,7 @@ from agents.access_requests import (
     NotDomainOwnerError,
     approve_request,
     deny_request,
+    grant_activity,
     pending_requests_for_owner,
     request_cross_domain_access,
     revoke_request,
@@ -237,9 +239,9 @@ def _claims_from(args: dict) -> UserClaims:
 
 
 def _log_usage(claims: UserClaims, action: str, namespace: str, query: str | None = None) -> None:
-    # stdout only, same as src/server.py's old Tier One - still not the audit
-    # table (REVIEW.md M10: a read's audit trail can be forged, since it never
-    # leaves CloudWatch Logs under this Lambda's own, verified identity).
+    # A log line for CloudWatch. The record that counts is in the audit table:
+    # GuardedMemory writes every read and write there, allowed or refused, with the
+    # grant ID and the record IDs (REVIEW.md N2, M10).
     entry = {
         "email": claims.email,
         "org": claims.org,
@@ -271,6 +273,22 @@ def _memory_write(args: dict) -> dict:
     return {"result": result}
 
 
+def _plain(value):
+    """DynamoDB returns numbers as Decimal, which JSON cannot carry."""
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, decimal.Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    return value
+
+
+def _grant_activity(args: dict) -> dict:
+    trail = grant_activity(_grants, args["grant_id"], _verified_email(args))
+    return {"grant_id": args["grant_id"], "activity": _plain(trail)}
+
+
 _DISPATCH = {
     "request_access": _request_access,
     "list_pending": _list_pending,
@@ -280,6 +298,7 @@ _DISPATCH = {
     "whoami": _whoami,
     "memory_search": _memory_search,
     "memory_write": _memory_write,
+    "grant_activity": _grant_activity,
 }
 
 

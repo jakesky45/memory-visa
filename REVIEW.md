@@ -53,7 +53,7 @@ not need one.
 | 3 | Jake | Unblock a model. Ask the Organization's administrator for a policy exception and for access to Claude Opus 5.5 or Sonnet 5.5 in `eu-west-2`. If that will take more than a few days, use a personal AWS account for the demo | U2/U3 |
 | 4 | Jake | Meanwhile, prove the agent with an API key: `demo/agent_chat.py --provider anthropic`, runbook steps 3 and 4 | "Stage 3: the agent" |
 | 5 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
-| 6 | Claude | Provenance on results, and reads in the audit table (N2). No model needed | "Next to build" |
+| 6 | Claude | ~~Provenance on results, and reads in the audit table (N2)~~ **Written.** Jake: deploy and run the check | "N2: provenance and the audit trail" |
 | 7 | Claude | Published facts, the second way to share (N8). No model needed | "Next to build" |
 | 8 | Claude | Search across every namespace the caller may read (N7) | "Next to build" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
@@ -97,6 +97,48 @@ On U7: the Anthropic SDK retries a failed call twice at most, and it does not re
 Dozens of model calls for one request means something outside this code sent the request
 again. `server.py` answers a failed model call with HTTP 502, and a 5xx invites a retry.
 Look at this again when a model call can succeed.
+
+### N2: provenance and the audit trail
+
+Written 23 November 2026. Tested offline; not deployed.
+
+| Change | What it does |
+|---|---|
+| `memory_search` results | Each result now has `record_id`, `created_at`, `score`, `namespace`, and `access`. For a member, `access` is `{"via": "membership"}`. For a visitor it names the grant, who approved it, and when it ends |
+| The audit table | Every read and write goes there, allowed or refused: who, the namespace, the question, the record IDs, the outcome. A read under a grant is filed under that grant. Anything else is filed under `namespace#<namespace>` |
+| No audit, no answer | The read is recorded before the caller has the results. If the record cannot be written, nothing is returned |
+| A refusal by AWS | When the visa's credentials are refused, that is recorded under the grant too |
+| `grant_activity`, a new tool | The owner of the target domain, and the requester, can see one grant's whole trail: requested, approved, each read, each refused write. Nobody else can. The agent does not have this tool |
+
+What it does not do: the author is not on the record. A long-term record is extracted by a
+model from events, and AgentCore does not carry the writer onto it. The audit trail has
+the writer and the event ID. Putting the author on the record needs N9.
+
+Not proven: the field names I read from the `RetrieveMemoryRecords` answer
+(`memoryRecordId`, `createdAt`, `score`, `memoryStrategyId`). A field that is absent is left
+out and nothing fails, so the check below shows which ones are real.
+
+To deploy and check. No new image is needed: only the tools Lambda, the tool list and the
+Cedar permit change.
+
+```bash
+make eval                                   # expect: 83 passed
+cd cdk && cdk diff MemoryVisaAgentCore      # expect: the tools Lambda code, one new tool, one new action in the permit
+cdk deploy MemoryVisaAgentCore && cd ..
+
+call "$LIAM" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7"}'
+# expect: each record has record_id, created_at, score, namespace, and access {"via":"membership"}
+
+# With an approved grant for Maya (stage 2 runbook, step 9):
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7"}'
+call "$MAYA" memory_write '{"namespace":"org_robotinc_dept_legal","text":"test"}'      # refused
+call "$LIAM" grant_activity '{"grant_id":"<id>"}'
+# expect: requested, approved, read (Maya, her question, the record IDs), write_refused
+call "$PRIYA" grant_activity '{"grant_id":"<id>"}'                                       # expect: 403
+```
+
+For the talk this is a fifth beat: Liam asks his own client "what did Maya read under that
+grant?" and gets the answer.
 
 ### Stage 3: the agent
 
@@ -577,7 +619,7 @@ In this order. Each is one change with its own tests.
 | N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. The claims body and the body-driven approvals removed | M1 | **Done and deployed** (`3db97ab`), proved live in stage 2 |
 | N3 | Apply the guardrail on write | M6 | **Done and deployed.** S2 and S3 fixed. The live write path works; not yet exercised with content that should trip a rule |
 | N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | **Done.** 24 tests |
-| N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the outcome and the grant ID | M4, M10, S9 | To do |
+| N2 | Results carry provenance: record ID, namespace, time, score, and how the caller was allowed. Reads and writes go to the audit table with the outcome and the grant ID | M4, M10, S9 | **Written and tested offline** (12 tests). Not deployed. The author is in the audit trail, not on the record: that needs N9. See "N2: provenance and the audit trail" |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
 | N6 | An agent that calls a model and uses memory in a conversation | Scale | **Written and tested offline** (17 tests). Not deployed, not run against a real model. See "Stage 3: the agent" |
 | N7 | Search across every namespace the caller may read | M7 | To do, after N2 |

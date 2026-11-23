@@ -92,20 +92,73 @@ class GuardedMemory:
             "(no static claim, and no active grant)"
         )
 
+    def _audit(self, claims: UserClaims, namespace: str, event: str, now: dt.datetime, **fields) -> None:
+        """Every use of memory goes to the grant store's audit trail, allowed or
+        refused (N2, M10). A store with no record_access keeps none."""
+        record_access = getattr(self._grants, "record_access", None)
+        if record_access is not None:
+            record_access(actor=claims.email, namespace=namespace, event=event, at=now, **fields)
+
     def put(self, claims: UserClaims, namespace: str, text: str, now: dt.datetime) -> dict:
         # A grant is read-only. Only a member writes into a namespace: a visitor who could
         # write would be putting their words into the owner's memory, for the owner's
         # own agents to read back as the owner's knowledge.
-        if self._authorising_grant(claims, namespace, now) is not None:
+        try:
+            grant = self._authorising_grant(claims, namespace, now)
+        except PermissionError as error:
+            self._audit(claims, namespace, "write_refused", now, detail=str(error))
+            raise
+        if grant is not None:
+            self._audit(claims, namespace, "write_refused", now, grant_id=grant.grant_id, detail="a grant never allows a write")
             raise PermissionError(
                 f"{claims.email} may read namespace '{namespace}' under a grant, but a grant never allows a write"
             )
-        sanitized = self._apply_guardrail(text)
-        return self._memory.put(namespace, sanitized)
+        try:
+            sanitized = self._apply_guardrail(text)
+        except Exception as error:
+            self._audit(claims, namespace, "write_refused", now, detail=f"guardrail: {type(error).__name__}")
+            raise
+        result = self._memory.put(namespace, sanitized)
+        event_id = result.get("eventId")
+        self._audit(claims, namespace, "write", now, record_ids=(event_id,) if event_id else ())
+        return result
 
     def retrieve(self, claims: UserClaims, namespace: str, query: str, now: dt.datetime) -> list[dict]:
-        grant = self._authorising_grant(claims, namespace, now)
+        """Search one namespace. Each result says where it came from and why the
+        caller may see it. The read is in the audit trail before the caller has the
+        results: if the trail cannot be written, nothing is returned."""
+        try:
+            grant = self._authorising_grant(claims, namespace, now)
+        except PermissionError as error:
+            self._audit(claims, namespace, "read_refused", now, query=query, detail=str(error))
+            raise
+        grant_id = grant.grant_id if grant else None
 
+        try:
+            records = self._read(claims, namespace, query, now, grant)
+        except Exception as error:
+            # With a visa this is AWS refusing, for example after the window closes.
+            self._audit(
+                claims, namespace, "read_refused", now, grant_id=grant_id, query=query, detail=f"backend: {type(error).__name__}"
+            )
+            raise
+
+        if grant:
+            access = {
+                "via": "grant",
+                "grant_id": grant.grant_id,
+                "approved_by": grant.approved_by,
+                "expires_at": (grant.approved_at + grant.duration).isoformat(),
+            }
+        else:
+            access = {"via": "membership"}
+        results = [{**record, "namespace": namespace, "access": access} for record in records]
+
+        ids = tuple(r["record_id"] for r in results if r.get("record_id"))
+        self._audit(claims, namespace, "read", now, grant_id=grant_id, query=query, record_ids=ids)
+        return results
+
+    def _read(self, claims: UserClaims, namespace: str, query: str, now: dt.datetime, grant: Grant | None) -> list[dict]:
         retrieve_scoped = getattr(self._memory, "retrieve_scoped", None)
         if retrieve_scoped is None:
             return self._memory.retrieve(namespace, query)

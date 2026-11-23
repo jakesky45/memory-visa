@@ -47,4 +47,20 @@ class AgentCoreMemoryBackend:
             namespace=namespace,
             searchCriteria={"searchQuery": query, "topK": 5},
         )
-        return [{"text": r.get("content", {}).get("text", "")} for r in response.get("memoryRecordSummaries", [])]
+        return [_record(r) for r in response.get("memoryRecordSummaries", [])]
+
+
+def _record(summary: dict) -> dict:
+    """One search result with where it came from (REVIEW.md N2, M4). The author is not
+    here: a long-term record is extracted by a model from events, and AgentCore does
+    not carry the writer onto it. The audit table has who wrote what (N9 will put the
+    author on the record itself)."""
+    created = summary.get("createdAt")
+    record = {
+        "text": summary.get("content", {}).get("text", ""),
+        "record_id": summary.get("memoryRecordId"),
+        "created_at": created.isoformat() if hasattr(created, "isoformat") else created,
+        "score": summary.get("score"),
+        "strategy_id": summary.get("memoryStrategyId"),
+    }
+    return {key: value for key, value in record.items() if value is not None}
