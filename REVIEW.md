@@ -125,6 +125,22 @@ to do, so this is a gap in the design and not a bug in the code. Nobody could se
 | Remove the promise | Stop listing the one real Gateway tool among the tools a grant carries. A grant then only promises the demonstration tools, and nothing it promises is refused. Small: one line in `src/agents/domain_config.py`, and the tests and the blog table that name the tool | **Open, Jake.** The simplest way to have no loose end |
 | Join them | The Cedar policy learns about grants, so a grant with tools opens the real tool | Not planned. It is the Dogwood question: a policy sees one caller's session, so the grant would have to reach it through a tool call |
 
+### The four screenshots
+
+23 November 2026. Jake: "are my screenshots suitable, or wrong?" None is wrong. Two showed
+more than they should, and two no longer earn their place.
+
+| Screenshot | Says | Finding | State |
+|---|---|---|---|
+| `gateway-configuration.jpg` | Interceptor, enforcement on, Cognito sign-in | **It showed the two app client IDs, the user pool ID and the Gateway ID.** None is a secret, but together with the published usernames they are everything needed to try passwords against the live demo: the user client has no secret and allows password sign-in. The ARNs were already blanked | **Fixed.** Those three fields are blanked the same way. The old image is still in the git history |
+| `dynamodb-audit-trail.jpg` | The approval is in the audit table | **The table list showed `payments-ledger-non-prod`**, a table from another project in the same account. Also: the rows are cut off ("liam@roboti..."), and it is from before reads were recorded | **Cropped** to the scan and its two rows. Better: take it again with a grant that has a read in it, columns widened |
+| `cognito-users.jpg` | Three real users | It shows three users. There are four: Jordan is a real user and the post says so later | **Open, Jake.** Take it again, or leave it: the caption says "three" |
+| `gateway-observability.jpg` | 38 invocations, a 10.5% error rate | It proves little, it is from the first day, and two banners say "Observability has not been enabled" and "Tracing not enabled", which reads as unfinished | **Open, Jake.** I would drop it |
+| All four | | They are JPEGs, so the text is slightly soft. Each has the mouse pointer over a label. They are light console pages in a dark post | **Open.** PNG, pointer moved away, next time they are taken |
+
+Because the client IDs were public: use strong passwords for the demo users, and destroy the
+stack when you are not showing it.
+
 ### Tenth review: the whole blog, read end to end
 
 23 November 2026, at `ba07194`. About 6,800 words in 22 sections. Each finding is fixed
@@ -405,6 +421,7 @@ not need one.
 | 8f | Claude | ~~Deploy N10 and run its five checks, then deploy again with `-c departmentGate=active`~~ **Done, 23 November 2026: the gate is active and proven** | "N10: the department gate" |
 | 8g | Jake | `whoami`: deploy (`cdk deploy MemoryVisaAgentCore -c departmentGate=active`; only the tools Lambda changes), then capture Jordan again: request with `include_tools`, Maya approves, `whoami`, wait for the window, `whoami`. Paste both answers over the two transcripts in "What a Caller Actually Gets" and put the `live_gateway_tools` field back. Expected for Jordan: `domain_tools` lists the three Engineering tools while the grant is open, and `live_gateway_tools` says "refused for you ... your department is not set. A grant does not change this" both times. Also run `eng "$JORDAN"` once: expected refused | "Review of the N10 run", Y1 and Y2 |
 | 8h | Jake | Decide Y2: keep the grant's promise of `check_shipping_classification` and let `whoami` explain the refusal (as now), or remove that tool from what a grant carries | "Y2 in plain words" |
+| 8i | Jake | Screenshots: drop or retake the observability one; retake the Cognito users (four) and the audit table (with a read). Make sure the demo users have strong passwords | "The four screenshots" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
