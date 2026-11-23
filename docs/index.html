@@ -510,22 +510,28 @@
 
     <h2 id="terms">How a Call Travels</h2>
 
-    <p>Every call takes the same path, whichever tool it is for. (The terms are in the <a href="#glossary">glossary</a> at the end.)</p>
+    <p>Every call takes the same path, whichever tool it's for. (If a term is new, there's a <a href="#glossary">glossary</a> at the end.)</p>
 
     <div class="sketch col">
       <div class="box wobble-a">AI Client<br><span class="sub">Claude / Cursor / Kiro</span></div>
-      <div class="arrow-down"><span class="sub">MCP tools/call + Cognito JWT</span></div>
+      <div class="arrow-down"><span class="sub">MCP tools/call + the person's Cognito access token</span></div>
       <div class="container-box">
         <div class="container-label">AgentCore Gateway</div>
-        <div class="box wobble-b">Policy Engine<br><span class="sub">Cedar evaluation</span></div>
+        <div class="box wobble-b">Token check<br><span class="sub">is this a real, unexpired login?</span></div>
+        <div class="arrow-down"></div>
+        <div class="box dashed-green wobble-c">Request interceptor<br><span class="sub">asks Cognito who the token belongs to, and writes the verified email, org and department into the call</span></div>
+        <div class="arrow-down"></div>
+        <div class="box wobble-a">Policy engine<br><span class="sub">Cedar evaluation</span></div>
       </div>
       <div class="arrow-down"><span class="sub">Authorised requests only</span></div>
-      <div class="box wobble-c">Gateway Target<br><span class="sub">Lambda / HTTP / Runtime</span></div>
+      <div class="box wobble-c">Gateway target<br><span class="sub">the tools Lambda - grants, memory, publishing</span></div>
     </div>
+
+    <p>The interceptor is the step everything else leans on: by the time a tool runs, it knows who is calling, and the caller had no say in it.</p>
 
     <h2 id="five-ways">Five Ways to Share, and Which One Needs a Human</h2>
 
-    <p>"Share memory across teams" is not one problem. Asking a person to approve every read does not scale, and letting everyone read everything is the failure described above. It helps to name the patterns separately, because each one has a different owner and a different cost:</p>
+    <p>"Share memory across teams" sounds like one problem. It isn't. Ask a person to approve every read and nothing scales; let everyone read everything and you're back at the failure described above. It helps to pull the patterns apart, because each one has a different owner and a different cost:</p>
 
     <table>
     <thead><tr><th>Pattern</th><th>Who can read</th><th>Who decides</th></tr></thead>
@@ -536,7 +542,7 @@
     <tr><td><strong>The visa</strong></td><td>One person, one namespace, a short time</td><td>The domain's owner, each time</td></tr>
     </table>
 
-    <p>The first three carry the volume. The visa is the exception path, and it is the one most teams have not built, so most of this post is about it. The point of the table is the order: if people need a visa every day for the same fact, that fact should have been published.</p>
+    <p>The first three carry the volume. The visa is the exception path - and it's the one most teams haven't built, which is why most of this post is about it. The real point of the table is the order: if people need a visa every day for the same fact, that fact should have been published.</p>
 
     <p>This repo builds four of the five. The brokered answer is not built.</p>
 
@@ -587,28 +593,22 @@
                               "text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}}}</code></pre>
     <pre><code>{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795429942485#5581be4e"}}</code></pre>
 
-    <p>A couple of minutes later - real background extraction, not an instant write - Maya, holding a grant into Legal's namespace, searches:</p>
+    <p>A couple of minutes later - real background extraction, not an instant write - Maya, holding a grant into Legal's namespace, searches for it. This is the record that comes back for her, taken from the live run shown in full <a href="#one-search">further down</a>:</p>
 
-    <pre><code>{"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-     "params": {"name": "AccessRequestTools___memory_search",
-                "arguments": {"namespace": "org_robotinc_dept_legal",
-                              "query": "X-7 battery pack export control classification"}}}</code></pre>
-    <pre><code>{"records": [
-      {"text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."},
-      {"text": "Supplier X is banned under export control classification 7A994 effective immediately (as of 2026-11-22)."}
-    ]}</code></pre>
+    <pre><code>{"text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment.",
+ "namespace": "org_robotinc_dept_legal",
+ "access": {"via": "grant", "grant_id": "72c2e6a7-...", "approved_by": "liam@robotinc.example", "expires_at": "2026-11-23T15:26:32+00:00"},
+ "score": 0.496, ...}</code></pre>
 
-    <p>That first result is the fact from paragraph one. Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships.</p>
-
-    <p>That transcript is from the first live run. Since then a result says more than its text: each one carries its <code>record_id</code>, <code>created_at</code>, <code>score</code>, the <code>namespace</code> it came from, and an <code>access</code> field that says why the caller may see it. For Maya that is <code>{"via": "grant", "grant_id": ..., "approved_by": "liam@robotinc.example", "expires_at": ...}</code>. An agent that repeats a fact can now say whose it is and on what authority it was read.</p>
+    <p>That's the fact from paragraph one, and Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships. Notice what came with it: the namespace it lives in, and exactly why she was allowed to see it - which grant, who approved it, and when it runs out. An agent that repeats this fact can say whose it is and on what authority it was read.</p>
 
     <p>The grant itself proved out exactly as designed, end to end, against the real stack: Maya's own first search, with no grant yet, came back <code>403 "no static claim, and no active grant"</code>; once Liam approved, the same search returned the fact; a write under that same grant came back <code>403 "a grant never allows a write"</code>; and once the three-minute window closed, the same search was refused again - the grant doesn't linger past its own expiry.</p>
 
     <h2 id="aws-enforces">AWS Enforces Every Read</h2>
 
-    <p>Up to here the boundary is one Python <code>if</code>. That is not good enough for a system whose whole job is a boundary. If the tools Lambda could read all of memory, then one bug in that <code>if</code>, or one new code path that forgets it, would open everything, and nothing would notice.</p>
+    <p>Here's the uncomfortable part. Everything up to now comes down to one Python <code>if</code>. That's a thin thing to hang a boundary on. If the tools Lambda could read all of memory, then one bug in that <code>if</code> - or one new code path that forgets to call it - would open everything, and nothing would notice.</p>
 
-    <p>So the tools Lambda has no permission to read memory at all. For each read it asks STS for temporary credentials, and attaches a session policy that narrows them to one namespace and one deadline:</p>
+    <p>So the tools Lambda isn't allowed to read memory. At all. For every read it has to go and ask STS for temporary credentials, and it attaches a session policy that narrows them to one namespace and one deadline:</p>
 
     <div class="sketch col">
       <div class="box wobble-a">Tools Lambda<br><span class="sub">checks the grant. Has no permission to read memory</span></div>
@@ -618,7 +618,7 @@
       <div class="box wobble-c">AgentCore Memory<br><span class="sub">IAM allows this namespace, before the deadline. Anything else: AccessDenied</span></div>
     </div>
 
-    <p>This is the session policy for Maya's read, as the code builds it:</p>
+    <p>This is the session policy for Maya's read, exactly as the code builds it:</p>
 
     <pre><code>{
   "Version": "2012-10-17",
@@ -647,30 +647,30 @@
   ]
 }</code></pre>
 
-    <p>Two conditions do the work. <code>bedrock-agentcore:namespace</code> limits the read to Legal's namespace. <code>aws:CurrentTime</code> ends it when the grant ends. The time condition matters because STS will not issue credentials for less than fifteen minutes, and a grant can be shorter than that: the credentials may still be alive, and the policy on them has already stopped allowing anything. Session tags carry the grant ID and the requester into CloudTrail; they are for the audit trail, not for the scoping.</p>
+    <p>Two conditions do all the work. <code>bedrock-agentcore:namespace</code> pins the read to Legal's namespace. <code>aws:CurrentTime</code> ends it when the grant ends. That second one matters more than it looks: STS won't hand out credentials for less than fifteen minutes, and a grant can be shorter than that. So the credentials may still be alive - they just don't allow anything any more. (Session tags carry the grant ID and the requester into CloudTrail. They're there for the audit trail, not for the scoping.)</p>
 
-    <p>The proof is a small script, <code>demo/visa_credentials_demo.py</code>. It mints a visa for Legal's namespace for sixty seconds and makes three calls straight to the AWS API, with none of this project's Python in the way:</p>
+    <p>Don't take that on trust. There's a small script, <code>demo/visa_credentials_demo.py</code>, that mints a visa for Legal's namespace for sixty seconds and then makes three calls straight to the AWS API, with none of this project's Python in the way:</p>
 
     <pre><code>1. org_robotinc_dept_legal     ALLOWED: 2 record(s)
 2. org_robotinc_dept_finance   REFUSED by AWS: AccessDeniedException
 3. org_robotinc_dept_legal     REFUSED by AWS: AccessDeniedException</code></pre>
 
-    <p>Line 2 is a different namespace with the same credentials. Line 3 is the same namespace, the same credentials, one minute later. Nothing was revoked and nothing was cleaned up. The window closed, and AWS said no.</p>
+    <p>Line 2 is a different namespace with the same credentials. Line 3 is the same namespace, the same credentials, one minute later. Nobody revoked anything and nothing got cleaned up. The window closed, and AWS said no.</p>
 
-    <p>A read of your own namespace goes the same way, with a short fixed window. There is one path to memory, and it is the narrow one.</p>
+    <p>Reading your own namespace goes the same way, just with a short fixed window. There's one path to memory, and it's the narrow one.</p>
 
-    <p>It is worth being exact about what this buys. Our code still decides <em>whether</em> to issue a visa, and for which namespace; a bug there could issue the wrong one. What AWS now guarantees is narrower and still valuable: a read with no visa has no credentials at all; a visa cannot reach a second namespace; it stops at its deadline without anyone cleaning up; and each read is a named STS session in CloudTrail. The check and the enforcement are two separate things, and the enforcement is no longer ours.</p>
+    <p>It's worth being honest about what this buys, because it's easy to oversell. Our code still decides <em>whether</em> to issue a visa, and for which namespace - get that wrong and you've issued the wrong visa. What AWS now guarantees is narrower, and still worth having: a read with no visa has no credentials at all; a visa can't reach a second namespace; it stops at its deadline whether or not anyone remembers; and every read shows up in CloudTrail as a named STS session. Deciding and enforcing are two different jobs, and the enforcing isn't ours any more.</p>
 
     <h2 id="published-facts">Publish Once, Read Everywhere</h2>
 
     <p>The visa works, and it is the wrong tool for a fact that half the company needs. If Engineering asks Legal for the X-7 classification every week, the answer is not fifty-two approvals. Legal should publish it once for the whole org.</p>
 
-    <p><code>publish_fact</code> does that. The owner of a domain publishes one fact for it into the org's published namespace, <code>org_robotinc_published</code>. Three things make it different from an ordinary memory write:</p>
+    <p>That's what <code>publish_fact</code> is for. A domain's owner publishes one fact into the org's published namespace, <code>org_robotinc_published</code>. Three things make it different from an ordinary memory write:</p>
 
     <ul>
-    <li><strong>Only the owner publishes.</strong> A published fact speaks for the department. A member of Legal who is not its owner cannot publish for Legal, and nobody can write to the published namespace with <code>memory_write</code>.</li>
-    <li><strong>It is stored as written.</strong> Ordinary agent memory is extracted by a model from a conversation, which is right for "what did we talk about" and wrong for a fact someone will act on. A published fact is one record, written directly, that no model rewords.</li>
-    <li><strong>The source is on the record.</strong> Who published it, for which department, and when. A reader gets that with the fact.</li>
+    <li><strong>Only the owner publishes.</strong> A published fact speaks for the whole department, so being in Legal isn't enough - you have to own it. And nobody gets to slip something into the published namespace with <code>memory_write</code>.</li>
+    <li><strong>It's stored exactly as written.</strong> Ordinary agent memory is extracted by a model from a conversation, which is fine for "what did we talk about" and not fine for a fact someone is about to act on. A published fact is one record, written directly. No model gets to reword it.</li>
+    <li><strong>The source travels with it.</strong> Who published it, for which department, and when - a reader gets all three along with the fact.</li>
     </ul>
 
     <p>Run against the deployed stack (shortened):</p>
@@ -686,17 +686,17 @@ Maya searches org_robotinc_published, with no grant:
 Maya writes to org_robotinc_published
                             403  "no static claim, and no active grant"</code></pre>
 
-    <p>No request, no approval, no wait, and it was searchable at once because nothing had to be extracted. IAM is set to hold this line too: the tools Lambda may write a record directly only where the namespace looks like <code>org_*_published</code>. A proof script, <code>demo/publish_boundary_demo.py</code>, takes a role with only that permission and calls AWS directly: a write to a published namespace is allowed, and the same write to a department's namespace or a person's own is refused with <code>AccessDeniedException</code>.</p>
+    <p>No request, no approval, no waiting around - and it was searchable straight away, because there was nothing to extract. IAM holds this line too: the tools Lambda can only write a record directly where the namespace looks like <code>org_*_published</code>. There's a proof script for that as well, <code>demo/publish_boundary_demo.py</code>. It takes a role with only that permission and calls AWS directly: a write to a published namespace goes through, and the same write to a department's namespace, or a person's own, comes back <code>AccessDeniedException</code>.</p>
 
-    <p>What is not built yet: taking a published fact back, or replacing it with a newer one.</p>
+    <p>What you can't do yet: take a published fact back, or replace it with a newer one. More on that near the end.</p>
 
     <h2 id="one-search">One Search, Still Scoped</h2>
 
-    <p>Until now a caller had to know where a fact lived. That does not survive contact with real use: Maya does not know, or care, whether the classification is in her team's notes, in Legal's published facts, or behind a grant.</p>
+    <p>There's been a quiet assumption in everything so far: that the caller knows where a fact lives. Real people don't. Maya doesn't know - or care - whether the classification is in her team's notes, in Legal's published facts, or behind a grant.</p>
 
-    <p><code>memory_search</code> with no namespace searches every namespace the caller may read at that moment: their own, their department's, the org's published facts, and anything an open grant covers. The answer says which namespaces were searched, and each result says where it came from and how it was allowed.</p>
+    <p>So <code>memory_search</code> with no namespace searches everywhere the caller is allowed to read right now: their own namespace, their department's, the org's published facts, and anything an open grant covers. The answer tells you which namespaces were searched, and each result says where it came from and why you were allowed to see it.</p>
 
-    <p>The part worth noticing is what did <em>not</em> change. A wider search did not get wider credentials. Each namespace is still its own read, with its own visa and its own audit entry. Searching four namespaces is four narrow reads. Live, that took two to four seconds, which is the honest cost of doing it this way.</p>
+    <p>The interesting part is what <em>didn't</em> change. A wider search didn't get wider credentials. Every namespace is still its own read, with its own visa and its own audit entry - searching four namespaces is four narrow reads, not one wide one. Live, that took two to four seconds. That's the honest price of doing it this way.</p>
 
     <p>Raw, from a real call, no grant yet - trimmed to the two namespaces that matter here:</p>
 
@@ -726,7 +726,7 @@ Maya writes to org_robotinc_published
 
     <h2 id="owner-sees">What the Owner Sees Afterwards</h2>
 
-    <p>Approving a grant on trust is half a control. The other half is being able to see what was done with it. Every read and every write goes to the audit table, allowed or refused, and a read under a grant is filed under that grant. If the read cannot be recorded, nothing is returned.</p>
+    <p>Approving a grant and then never hearing about it again is half a control. The other half is being able to see what was done with it. So every read and every write goes to the audit table, allowed or refused, and a read under a grant is filed under that grant. And if the read can't be recorded, it doesn't happen - no record, no answer.</p>
 
     <p><code>grant_activity</code> shows one grant's whole trail to the two people it concerns, the owner and the requester (from a live run, shortened):</p>
 
@@ -739,13 +739,13 @@ Maya writes to org_robotinc_published
 grant_activity as Priya (neither):
   403  "is not the owner of 'legal' and did not request"</code></pre>
 
-    <p>So Liam can ask his own AI client "what did Maya read under that grant?" and get an answer, from the same table that holds his approval.</p>
+    <p>Which means Liam can ask his own AI client "what did Maya actually read under that grant?" and get a straight answer, from the same table that holds his approval.</p>
 
     <h2 id="people-and-agents">The Visa Belongs to a Person</h2>
 
-    <p>One thing to be exact about. Every identity here is a person's login, and a grant is given to a person. An agent has no identity or permission of its own: it carries its person's token and acts as them. So Liam approves Maya, not Maya's agent, and the audit trail names Maya.</p>
+    <p>One thing to be exact about, because it's easy to blur. Every identity here is a person's login, and a grant goes to a person. An agent doesn't have an identity or a permission of its own - it carries its person's token and acts as them. So Liam is approving Maya, not Maya's agent, and it's Maya's name in the audit trail.</p>
 
-    <p>That has one consequence worth saying out loud. "Human-approved" means "approved with Liam's login". Approval should stay something a person does, not something their agent can do for them. The agent in this repo is not given the approval tools for that reason.</p>
+    <p>That has one consequence worth saying out loud. "Human-approved" really means "approved with Liam's login". Approval should stay something a person does - not something their agent can quietly do for them. That's why the agent in this repo isn't given the approval tools.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 
@@ -956,20 +956,20 @@ grant_activity as Priya (neither):
 
     <p>A grant is a handshake between two people: one asks and another approves, often hours apart. The approval has to be stored somewhere that outlives both sessions and that both people's requests can reach. That is a table, not a session history.</p>
 
-    <p>We tested both halves of that on a separate Gateway, so it is observed and not only read:</p>
+    <p>We didn't want to take that from the docs alone, so we tested both halves on a separate Gateway:</p>
 
     <ul>
     <li><strong>One caller cannot see another's history.</strong> User B called a tool in session X. A moment later user A, sending the same session ID, was refused an action that needed that call. Sessions are per caller, as the AWS page says.</li>
     <li><strong>A policy can enforce the order of one caller's own calls.</strong> A read was allowed only after a grant check for the same namespace had succeeded in the same session, and refused with no check, with a check for another namespace, with a check that failed or returned "not active", and once the policy's one-minute window had passed.</li>
     </ul>
 
-    <p>So Dogwood could be a second gate in front of a crossing: "no read unless this caller's grant was checked first". It is not in this build, for three reasons. The window is fixed in the policy text and not taken from the grant, so it is less exact than the deadline IAM enforces. It cannot see a revocation, which happens in the owner's session. And once a policy engine holds one such policy, every request to the Gateway must carry a session ID header or it fails.</p>
+    <p>So Dogwood could sit in front of a crossing as a second gate - "no read unless this caller's grant was checked first". It isn't in this build, for three reasons. The window is fixed in the policy text rather than taken from the grant, so it's less exact than the deadline IAM enforces. It can't see a revocation, because that happens in the owner's session. And the moment a policy engine holds one such policy, every request to the Gateway has to carry a session ID header, or it fails.</p>
 
     <p>That is why the grant lives in its own table. Cedar does less here than the name on the box suggests, and it is better to say so: today it holds one baseline <code>permit</code> for the tools, and the department rule it was meant to enforce cannot fire on this auth path. The grant is checked in the tools Lambda, and the read it allows is then enforced by IAM.</p>
 
     <h2 id="rules">The Rules It Follows</h2>
 
-    <p>The parts will change. These are the rules they were built to, and the ones worth taking to another stack:</p>
+    <p>The parts will change - they always do. These are the rules the parts were built to, and they're the bit worth taking with you to another stack:</p>
 
     <ol>
     <li><strong>Identity comes from the verified token, never from an argument.</strong> No tool takes an email. The interceptor overwrites anything a caller types.</li>
