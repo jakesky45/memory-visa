@@ -386,7 +386,7 @@
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
-    <a href="#people-and-agents">People and agents</a>
+    <a href="#people-and-agents">The visa belongs to a person</a>
     <a href="#approval-ui">No bespoke UI</a>
     <a href="#identity-binding">Identity binding</a>
     <a href="#closing-the-loop">Closing the loop</a>
@@ -414,7 +414,7 @@
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
-        <a href="#people-and-agents">People and agents</a>
+        <a href="#people-and-agents">The visa belongs to a person</a>
     <a href="#approval-ui">No bespoke UI</a>
         <a href="#identity-binding">Identity binding</a>
         <a href="#closing-the-loop">Closing the loop</a>
@@ -745,31 +745,13 @@ Liam approves a grant. The same search again:
 grant_activity as Priya (neither):
   403  "is not the owner of 'legal' and did not request"</code></pre>
 
-    <p>So Liam can ask his own AI client "what did Maya read under that grant?" and get an answer, from the same table that holds his approval. What it cannot tell him yet is which agent Maya used.</p>
+    <p>So Liam can ask his own AI client "what did Maya read under that grant?" and get an answer, from the same table that holds his approval.</p>
 
-    <h2 id="people-and-agents">People Hold Visas. Agents Travel on Them.</h2>
+    <h2 id="people-and-agents">The Visa Belongs to a Person</h2>
 
-    <p>"Is the agent allowed?" and "is the person allowed?" are different questions, and it is easy to slide between them. This project answers only the second. Every identity is a person's login. A grant is given to Maya. No agent has an identity or a permission of its own: it carries Maya's token and acts as Maya, whether it is her Claude session or the small agent in this repo.</p>
+    <p>One thing to be exact about. Every identity here is a person's login, and a grant is given to a person. An agent has no identity or permission of its own: it carries its person's token and acts as them. So Liam approves Maya, not Maya's agent, and the audit trail names Maya.</p>
 
-    <p>There are three ways to do this, and it helps to know which one you are looking at:</p>
-
-    <table>
-    <thead><tr><th>Model</th><th>Who is allowed</th><th>Good for</th><th>In this repo</th></tr></thead>
-    <tr><td><strong>The agent acts for a person</strong></td><td>The person. The agent has exactly what they have</td><td>An assistant a person is driving</td><td>This one</td></tr>
-    <tr><td><strong>The agent is its own principal</strong></td><td>The agent, like a service account</td><td>Work with nobody present: a nightly job, or Legal's agent answering other teams</td><td>Not built</td></tr>
-    <tr><td><strong>Both</strong></td><td>Only what the agent <em>and</em> the person are each allowed</td><td>Anything that matters</td><td>Not built</td></tr>
-    </table>
-
-    <p>Being exact about this changes four claims in this post:</p>
-
-    <ul>
-    <li><strong>Liam approves Maya, not an agent.</strong> He cannot see or choose which agent will use the grant.</li>
-    <li><strong>The audit trail names Maya.</strong> It does not say which client or agent made the read.</li>
-    <li><strong>"Human-approved" means "approved with Liam's token".</strong> If Liam's own agent holds that token and decides to call <code>approve_access</code>, the server cannot tell. The agent in this repo is not given the approval tools for that reason, but a general AI client is. A real deployment should put approval behind something an agent cannot do for him: a separate sign-in or scope for the approval tools.</li>
-    <li><strong>An agent can misuse a grant its person holds.</strong> If it is steered by text it has read, it can search Legal's namespace for something Maya never asked for. Read-only, one namespace and a short window limit the damage. They do not remove it.</li>
-    </ul>
-
-    <p>The fifth pattern from the table near the top, the brokered answer, is where an agent needs its own identity: Legal's agent answers a question and nobody reads Legal's memory. That is why it is not built here yet.</p>
+    <p>That has one consequence worth saying out loud. "Human-approved" means "approved with Liam's login". Approval should stay something a person does, not something their agent can do for them. The agent in this repo is not given the approval tools for that reason.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 
@@ -972,7 +954,7 @@ grant_activity as Priya (neither):
 
     <ol>
     <li><strong>Identity comes from the verified token, never from an argument.</strong> No tool takes an email. The interceptor overwrites anything a caller types.</li>
-    <li><strong>Access belongs to a person. An agent acts for them and never has more.</strong> There is no agent identity here, and the post says where that falls short.</li>
+    <li><strong>Access belongs to a person.</strong> An agent acts for its person and never has more than they have.</li>
     <li><strong>No standing permission to read.</strong> The code that answers a search cannot read memory by itself. It gets credentials for one namespace, for one read.</li>
     <li><strong>The platform enforces scope and time.</strong> The namespace and the deadline are IAM conditions, not lines of Python.</li>
     <li><strong>An exception is read-only, has a reason, and ends by itself.</strong> A grant never writes, and nobody has to remember to remove it.</li>
