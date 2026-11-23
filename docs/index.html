@@ -1062,9 +1062,22 @@ call "$MAYA" memory_search '{"query":"X-7 classification"}'      # no namespace,
 python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60
 python3 demo/publish_boundary_demo.py     # IAM refuses a direct write outside a published namespace</code></pre>
 
-    <p>7. Stop the billing when you are done: <code>cd cdk &amp;&amp; npx cdk destroy --all</code>.</p>
+    <p>7. Stop the billing when you are done:</p>
 
-    <p>To use an AI client and not <code>curl</code>, give it the Gateway's <code>/mcp</code> address and Maya's token as the bearer token. <code>tools/list</code> then shows the ten tools: <code>request_access</code>, <code>list_pending</code>, <code>approve_access</code>, <code>deny_access</code>, <code>revoke_access</code>, <code>whoami</code>, <code>memory_search</code>, <code>memory_write</code>, <code>grant_activity</code> and <code>publish_fact</code>.</p>
+    <pre><code>cd cdk &amp;&amp; npx cdk destroy --all</code></pre>
+
+    <p>To use an AI client and not <code>curl</code>, give it the Gateway's <code>/mcp</code> address and Maya's token as the bearer token. <code>tools/list</code> then shows all ten:</p>
+
+    <pre><code>request_access
+list_pending
+approve_access
+deny_access
+revoke_access
+whoami
+memory_search
+memory_write
+grant_activity
+publish_fact</code></pre>
 
     <aside class="note"><strong>Shell:</strong> a tool's result is JSON inside a JSON string, double-escaped. Print a captured response with <code>printf '%s'</code>, not zsh's <code>echo</code> - it drops a backslash level and makes valid JSON look broken. The <code>call</code> helper above pipes straight into <code>jq</code>, so this won't bite you there.</aside>
 
