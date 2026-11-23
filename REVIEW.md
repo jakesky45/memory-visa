@@ -10,88 +10,124 @@ everything about the live system comes from the code, the README and the blog.
 
 ## Progress and action points
 
-Updated 23 November 2026, at commit `451beca` on `main`. This section is the working list.
+Updated 23 November 2026, at commit `3db97ab` on `main`. This section is the working list.
 The findings below it are the review as first written, at commit `49f59ba`.
+
+### Second review: commits `ca72969` and `3db97ab`
+
+These two commits wire up the Guardrail (M6) and move memory to verified MCP tools (M1).
+
+What is good:
+
+- **M1 is fixed the right way.** The claims-body path is deleted, not patched. `server.py` is
+  a health check, and its role has no memory, table or guardrail permissions left.
+- **The visa role now trusts the tools Lambda**, which is the only thing that reads memory.
+- **Without the visa role the Lambda cannot read at all.** It has no read permission of its
+  own, so a missing setting fails closed.
+- **The README says what is not deployed.** Keep doing that.
+
+What needs fixing. None of it is deployed yet, so fix before the deploy:
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| S1 | High | **The blog shows the new tools as "run for real", and they were not.** The `memory_write` and `memory_search` transcripts carry the event ID (`0000001795364012656#508fa195`) and the time (`2026-11-22T16:17:46Z`) of the old run, put into the new JSON shape. The `tools/list` output now lists eight tools. The README says this path is not deployed. This is the one thing that would cost you the audience's trust if someone checked | Run them live and paste the real output, or label them "expected output" until you have |
+| S2 | High | **Private keys are now stored.** The Guardrail rules changed from `BLOCK` to `ANONYMIZE`. The private-key pattern matches only the header line, so the header is masked and the key itself is written to memory. Before, the whole write was refused. The same is true of the secret that normally follows an `AKIA...` key ID | Keep `BLOCK` for the private key and refuse the write. Or match the whole block, to the `END` line |
+| S3 | High | **A blocked write stores the refusal message as a fact.** `_apply_guardrail` treats every intervention as a redaction and stores `outputs`. When a rule blocks, `outputs` is "This input contains content that can't be stored." That sentence then goes into memory. Also, empty `outputs` falls back to the raw text, and no Guardrail ID means no check at all | Read the assessment. If anything was blocked, raise and return an error to the caller. Fail closed when `outputs` is empty |
+| S4 | Medium | **Names, emails and phone numbers are masked on every write.** The PII rules anonymise `NAME`, `EMAIL` and `PHONE`. Shared organisational facts need names: who approved, which supplier, who to ask. A fact may come back as "{NAME} is banned under 7A994" | Decide what memory may hold. Remove the `NAME` rule, or apply the PII rules to user namespaces only |
+| S5 | Medium | **The Lambda may not know the AgentCore API.** The memory tools now run in the Python 3.12 Lambda runtime with its built-in AWS SDK, which is often months old. `bedrock-agentcore` and `retrieve_memory_records` need a recent one. I have not checked which version the runtime ships | On the first call, look for `UnknownServiceError` or a parameter error in the logs. If it appears, bundle a current `boto3` with the function |
+| S6 | Medium | **Project namespaces do not exist live.** `_claims_from` builds claims from one department and no projects, and Cognito has no projects attribute. So the shared project namespace (`test_eval2`) and Jordan's project scope work only in the offline tests | Add a `custom:projects` attribute and read it in the interceptor, or stop describing project sharing as working |
+| S7 | Low | **The `memory_write` description is wrong.** It says it "always writes to the caller's own namespace". It takes a `namespace` and accepts any namespace the caller is a member of, such as their department's | Say "a namespace the caller is a member of" |
+| S8 | Low | **Writes are checked in Python only.** The Lambda's role may write to the whole memory. `CreateEvent` accepts an `actorId` condition key, so a write could use a scoped credential in the same way a read does | Later: a write visa, scoped to the one actor |
+| S9 | Low | **The usage log has no outcome.** It is written before the check, so a refused read and an allowed read look the same, and neither names the grant | Log after the check, with allowed or refused and the grant ID. This becomes N2 |
+| S10 | Low | **No tests for the new code.** The two tools, the claims builder and the Guardrail function have none | Add them with N4 |
+| S11 | Low | **The dead orchestrator route is still permitted.** `Orchestrator___POST:/invocations` is in the Cedar permit and returns 410 | Remove it from the permit until N6 gives it a job |
 
 ### Done since the review
 
 | Finding | What changed | Commit | How it was checked |
 |---|---|---|---|
-| M2 | Memory is read with a visa: AWS credentials that allow one namespace until the grant ends. The orchestrator's own role can no longer read memory | `a280bd5` | 11 offline tests. **Not deployed. Not proved against AWS** |
+| M1 | Memory is read and written through `memory_search` and `memory_write`, with identity from the verified token. The claims-body path and the body-driven approvals are deleted | `3db97ab` | Read the diff. **No tests. Not deployed** |
+| M2 | Memory is read with a visa: AWS credentials that allow one namespace until the grant ends. The reader's own role cannot read memory | `a280bd5`, `3db97ab` | 11 offline tests. **Not deployed. Not proved against AWS** |
 | M3 (write) | A grant reads and never writes. Only a member writes into a namespace | `451beca` | Offline test |
+| M6 | The Guardrail is called on every write | `ca72969` | Read the diff. **Not deployed.** See S2, S3 and S4 before you rely on it |
 | G2 | A grant is decided once. An expired, denied or revoked grant cannot be approved; approving twice does not move the window; a closed window cannot be revoked | `451beca` | Offline tests on the in-memory store |
 | G2 (race) | The DynamoDB store writes a decision only if the status is still what it read | `451beca` | **Syntax only.** No test covers the DynamoDB store |
 | G2 (limits) | A request needs a reason, and a window of at most 24 hours | `451beca` | Offline tests |
 | G4 | The requester's org comes from the verified token. `requester_org` is removed from the tool's schema | `451beca` | **Syntax only.** No test covers the tools Lambda |
 
-`make eval` now runs 25 tests: the 6 properties, 11 for the visa, 8 for the grant rules.
+`make eval` runs 25 tests: the 6 properties, 11 for the visa, 8 for the grant rules.
 
-### Your action points: deploy and prove the visa
+### Your action points: fix, deploy and prove
 
 These need your AWS access. Run them from the environment you deploy from.
 
 | # | Action | Command or detail | Expected result |
 |---|---|---|---|
-| A1 | Pull | `git pull` | `main` at `451beca` or later |
-| A2 | Check the infrastructure change | `cd cdk && source .venv/bin/activate && cdk diff MemoryVisaAgentCore` | A new role `memory-visa-reader`. The runtime role loses `RetrieveMemoryRecords` and may assume the new role. Two new runtime environment variables. Three new parameters. `requester_org` leaves the `request_access` schema. Stop if you see anything else |
+| A1 | Fix S2 and S3 first | They decide what is written to memory. Do not deploy the Guardrail call without them | A blocked write returns an error; a private key is never stored |
+| A2 | Check the infrastructure change | `cd cdk && source .venv/bin/activate && cdk diff --all` | A new role `memory-visa-reader`, trusted by the tools Lambda. The tools Lambda gains five environment variables and three permissions: write events, assume the visa role, apply the Guardrail. The runtime role loses memory and table access, and the runtime has no environment variables. Two new tools on the target and in the Cedar permit. `requester_org` leaves the `request_access` schema. Three new parameters. The Guardrail's three regex rules change. Stop if you see anything else |
 | A3 | Find your role ARN | `aws sts get-caller-identity --query Arn --output text` | If it is an `assumed-role` ARN, use the IAM role behind it: `arn:aws:iam::<account>:role/<name>` |
-| A4 | Deploy, with your role allowed to run the proof | `cdk deploy MemoryVisaAgentCore -c visaDemoPrincipalArn=<ARN from A3>` | The stack updates |
-| A5 | Rebuild and push the orchestrator image | As before. `server.py` changed, and the stack names the image by digest, so update the digest | The runtime uses the new image |
-| A6 | Make sure Legal has a fact to read | Write it through the orchestrator if the old one has expired. Wait a minute for extraction | A retrieve as Liam returns it |
-| A7 | Run the proof | `python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60` | Line 1 `ALLOWED`. Lines 2 and 3 `REFUSED by AWS: AccessDeniedException` |
-| A8 | Send me the three lines | Paste the output | See the next table if it differs |
-| A9 | Retest a client that calls `request_access` | It no longer needs `requester_org`. A client that still sends it is not broken; the value is ignored | A request is created under your verified org |
+| A4 | Deploy, with your role allowed to run the proof | `cdk deploy --all -c visaDemoPrincipalArn=<ARN from A3>` | The stacks update |
+| A5 | Rebuild and push the orchestrator image | `server.py` changed, and the stack names the image by digest, so update the digest | The runtime answers `/ping` |
+| A6 | Write Legal's fact through the new tool | `memory_write` as Liam, into `org_robotinc_dept_legal`. Watch the Lambda's logs on this first call (S5) | A result with an event ID. Wait a minute for extraction |
+| A7 | Read it both ways | `memory_search` as Liam, then as Maya with no grant | Liam gets the record. Maya gets a 403 |
+| A8 | Run the proof | `python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60` | Line 1 `ALLOWED`. Lines 2 and 3 `REFUSED by AWS: AccessDeniedException` |
+| A9 | Run the grant end to end | Maya requests, Liam approves, Maya searches, the window closes, Maya searches again | Allowed inside the window; refused after it |
+| A10 | Send me the outputs of A6 to A9 | Paste them | Then replace the transcripts in the blog with the real ones (S1) |
 
 If the proof does not match:
 
 | What you see | Likely cause | What to do |
 |---|---|---|
-| Line 1 refused | AgentCore gives IAM the namespace in a form the policy does not list. The names are flat strings today; AgentCore stores them with a leading and trailing slash | Send me the output. It is a one-line fix in `namespace_condition_values` |
-| Line 2 allowed | The namespace condition is not applied to this call | Stop and send me the output. The design needs a different condition key, and nothing else should be built on it until this is known |
-| An error when the visa is minted | Your role is not in the visa role's trust policy | Check A3 and A4 |
-| The orchestrator's retrieve fails after the deploy | The runtime still runs the old image, which reads with its own role | Do A5 |
+| A8 line 1 refused | AgentCore gives IAM the namespace in a form the policy does not list. The names are flat strings today; AgentCore stores them with a leading and trailing slash | Send me the output. It is a one-line fix in `namespace_condition_values` |
+| A8 line 2 allowed | The namespace condition is not applied to this call | Stop and send me the output. The design needs a different condition key, and nothing else should be built on it until this is known |
+| An error when the visa is minted in A8 | Your role is not in the visa role's trust policy | Check A3 and A4 |
+| A6 or A7 fails with `UnknownServiceError` or an unknown parameter | The Lambda runtime's AWS SDK is too old (S5) | Bundle a current `boto3` with the function |
+| A7 as Liam returns nothing | Extraction has not finished, or the write was masked or blocked by the Guardrail (S3, S4) | Wait a minute. Then read the Lambda's log for the write |
+| A6 times out | The function has 10 seconds for the Guardrail call and the write, on a cold start | Raise the timeout |
 
 ### Your decisions
 
 | # | Decision | Why it is yours | My recommendation |
 |---|---|---|---|
-| D1 | Does a grant still carry the domain's tools? | The blog calls it "a full visa" on purpose. The grant is now read-only for memory, but `allowed_tools` still returns the owner's tools, including the write tool `log_compliance_note` | Take tools out of the grant by default. Offer them as a named scope the approver sees |
+| D1 | Does a grant still carry the domain's tools? | The blog now says so on purpose: read-only memory, and the whole toolset. `allowed_tools` returns the owner's tools, including the write tool `log_compliance_note` | Take tools out of the grant by default. Offer them as a named scope the approver sees |
 | D2 | Is 24 hours the right longest window? | It is a constant, `MAX_GRANT_DURATION`. I chose it | Keep it, or set it for each domain |
-| D3 | Does `REVIEW.md` go into the public repository? | It is untracked. The repository is public and the review is candid | Keep it out, or publish a shorter "known limits" page |
+| D3 | Does `REVIEW.md` go into the public repository? | **Decided: yes.** Published in `4605991` | |
 | D4 | The thesis of the talk and the next post (B1) | It decides what is built next | "Isolated by default, shareable on purpose": five patterns, with the visa as the exception path |
 | D5 | The tone toward AgentCore (B5) | It is your voice on an AWS stage | Present it as the layer you add on top, not as where the platform stops |
 | D6 | Verify three facts before they are said on stage (B4) | I could not confirm them | The name "Dogwood"; the AWS security blog and its date; the AgentCore and Bedrock Agents dates |
+| D7 | What may memory hold? (S4) | Masking names changes what shared memory is for | Keep names in department and project memory. Mask secrets everywhere |
 
 ### Next to build
 
 In this order. Each is one change with its own tests.
 
-| # | Work | Finding | Depends on | Why this order |
-|---|---|---|---|---|
-| N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. Remove the `claims` body and the body-driven approvals from `server.py` | M1 | A7 passing | The visa is only as good as the identity it is issued to. Today that identity can still be typed into a request |
-| N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the grant ID | M4, M10 | N1 | The author must be the verified one |
-| N3 | Apply the guardrail on write, or remove the claim | M6 | N1 | A live claim that is false today |
-| N4 | Tests for the DynamoDB store and the tools Lambda | Tests | None | Two of today's fixes are checked by syntax only |
-| N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | N4 | Change the hot path with tests under it |
-| N6 | An agent that calls a model and uses memory in a conversation | Scale | N1 | Demo beats 1 and 2 need it. Nothing in the repository calls a model |
-| N7 | Search across every namespace the caller may read | M7 | N2 | The function that makes shared memory useful |
-| N8 | One more sharing pattern: a published fact, or a brokered answer | Scale | N2, N7 | The talk needs more than one way to share |
-| N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | A7 | Removes the one-minute wait and the rewording. Also removes the two-form namespace condition |
-| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | None | Makes "built on Cedar" true, and removes a Cognito call from every request |
+| # | Work | Finding | State |
+|---|---|---|---|
+| N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. The claims body and the body-driven approvals removed | M1 | **Done in code** (`3db97ab`). Not deployed |
+| N3 | Apply the guardrail on write | M6 | **Done in code** (`ca72969`). Fix S2 and S3 |
+| N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | To do. Three fixes are checked by reading only |
+| N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the outcome and the grant ID | M4, M10, S9 | To do |
+| N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
+| N6 | An agent that calls a model and uses memory in a conversation | Scale | To do. `server.py` is kept as the place for it |
+| N7 | Search across every namespace the caller may read | M7 | To do, after N2 |
+| N8 | One more sharing pattern: a published fact, or a brokered answer. Project namespaces working live | Scale, S6 | To do |
+| N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
+| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | To do. Would also carry projects (S6) |
 
 ### The blog
 
-Nothing in the blog has changed. Two of today's changes make it more wrong until it is
-updated, and they are yours to rewrite or to hand to me:
+The blog was updated in `3db97ab`. What changed, and what is still open:
 
-| Blog says | Now |
+| Blog | State |
 |---|---|
-| "a grant into a domain carries that domain's whole toolset alongside its Memory namespace" | Still true for tools (D1). For memory, the grant now reads only |
-| The `request_access` transcripts and the Quickstart | Still correct. `requester_org` was never shown in them |
-| Nothing about AWS enforcing the boundary | The strongest new point. Add it once A7 passes: "the boundary and the expiry are enforced by IAM, not by our code" |
-
-The table of claims in B3 still stands, except that "the door closes behind them" is nearer
-the truth: a read after the window is refused by AWS as well as by the code.
+| The Cognito row now says the access tokens carry no custom claims | Fixed. This was a contradiction in B3 |
+| "For Memory, a grant is read-only" | Fixed, and correct |
+| The memory section describes the tools and the deleted claims-body path | Correct, and a good story: say what was wrong and that it is gone |
+| The `memory_write`, `memory_search` and `tools/list` transcripts | **Not real.** See S1 |
+| "a log line records who asked" | Correct, and the caveat about the audit table is right |
+| Nothing about AWS enforcing the boundary | Still missing. Add it once A8 passes: "the boundary and the expiry are enforced by IAM, not by our code" |
+| "built on Cedar"; "GrantStore backing ordinary Cedar ABAC" | Still not accurate (B3, C1) |
+| "five tools" in the older sections | Still there beside "eight tools". Use one number |
 
 ### The demo, in four beats
 
@@ -99,8 +135,8 @@ the truth: a read after the window is refused by AWS as well as by the code.
 |---|---|---|
 | 1. Short-term memory | Maya asks two questions in one conversation; the agent follows the thread | No. Needs N6 |
 | 2. Long-term memory | A new conversation; the agent still knows what it learned | No. Needs N6 |
-| 3. Shared, and refused | Legal records a fact; Engineering's read is refused by AWS | After A7 |
-| 4. The visa | Liam approves; the same call works; the window closes; AWS refuses again. The policy is on screen | After A7. Stronger after N1 |
+| 3. Shared, and refused | Legal records a fact; Engineering's read is refused | After A7. Refused by AWS itself after A8 |
+| 4. The visa | Liam approves; the same call works; the window closes; AWS refuses again. The policy is on screen | After A9 |
 
 Short-term memory is the transcript: events, for one person in one conversation, available
 at once, kept 7 days here. Long-term memory is what was learned: records that a model
