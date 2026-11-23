@@ -378,11 +378,10 @@
     <a href="#the-problem">The problem</a>
     <a href="#terms">How a call travels</a>
     <a href="#five-ways">Five ways to share</a>
-    <a href="#what-agentcore-ships">What AgentCore ships</a>
     <a href="#lifecycle">The lifecycle</a>
     <a href="#what-a-grant-unlocks">What a grant unlocks</a>
     <a href="#maya-gets-her-fact">Maya gets her fact</a>
-    <a href="#aws-enforces">AWS enforces it</a>
+    <a href="#aws-enforces">AWS enforces every read</a>
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
@@ -391,6 +390,7 @@
     <a href="#identity-binding">Identity binding</a>
     <a href="#closing-the-loop">Closing the loop</a>
     <a href="#what-a-caller-gets">whoami</a>
+    <a href="#what-agentcore-ships">Why not AgentCore's own policies</a>
     <a href="#rules">The rules it follows</a>
     <a href="#quickstart">Quickstart</a>
     <a href="#staleness-risk">Staleness between writes</a>
@@ -407,11 +407,10 @@
         <a href="#the-problem">The problem</a>
         <a href="#terms">How a call travels</a>
     <a href="#five-ways">Five ways to share</a>
-        <a href="#what-agentcore-ships">What AgentCore ships</a>
         <a href="#lifecycle">The lifecycle</a>
         <a href="#what-a-grant-unlocks">What a grant unlocks</a>
         <a href="#maya-gets-her-fact">Maya gets her fact</a>
-        <a href="#aws-enforces">AWS enforces it</a>
+        <a href="#aws-enforces">AWS enforces every read</a>
     <a href="#published-facts">Publish once</a>
     <a href="#one-search">One search, still scoped</a>
     <a href="#owner-sees">What the owner sees</a>
@@ -420,7 +419,8 @@
         <a href="#identity-binding">Identity binding</a>
         <a href="#closing-the-loop">Closing the loop</a>
         <a href="#what-a-caller-gets">whoami</a>
-        <a href="#rules">The rules it follows</a>
+        <a href="#what-agentcore-ships">Why not AgentCore's own policies</a>
+    <a href="#rules">The rules it follows</a>
     <a href="#quickstart">Quickstart</a>
         <a href="#staleness-risk">Staleness between writes</a>
     <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
@@ -470,7 +470,7 @@
 
     <p>Once a company has more than a few people working with AI agents, what those agents learn ends up in islands. What Engineering's people taught their agent, Legal's people never see. Finance starts from zero on a question Engineering answered last quarter. Put that memory in one shared, namespaced store and the payoff compounds: anyone's agent can draw on what the company already knows, not just its own slice.</p>
 
-    <p>The catch shows up the moment you actually try it. Centralised means every agent can now see everything, which is worse than the islands you started with - that's not a hypothetical, it's the first thing that breaks. memory-visa is the piece in between: the store is shared, each team's part of it stays isolated by default, and crossing that boundary is a deliberate, audited, time-boxed act, not a permanent hole in the wall.</p>
+    <p>The catch shows up the moment you actually try it. Centralised means everyone's agent can now see everything, which is worse than the islands you started with - that's not a hypothetical, it's the first thing that breaks. memory-visa is the piece in between: the store is shared, each team's part of it stays isolated by default, and crossing that boundary is a deliberate, audited, time-boxed act, not a permanent hole in the wall.</p>
 
     <p>One distinction runs through everything below. Memory here belongs to people and teams, not to agents. An agent is how a person reaches it. So MCP means Maya keeps using Claude, Liam can be on Cursor, Priya on whatever ships next year: they all call the same tools behind the same Gateway, into the same memory, each as themselves.</p>
 
@@ -525,7 +525,7 @@
 
     <h2 id="five-ways">Five Ways to Share, and Which One Needs a Human</h2>
 
-    <p>"Share memory across teams" is not one problem. Asking a person to approve every read does not scale, and letting everyone read everything is the failure this post started with. It helps to name the patterns separately, because each one has a different owner and a different cost:</p>
+    <p>"Share memory across teams" is not one problem. Asking a person to approve every read does not scale, and letting everyone read everything is the failure described above. It helps to name the patterns separately, because each one has a different owner and a different cost:</p>
 
     <table>
     <thead><tr><th>Pattern</th><th>Who can read</th><th>Who decides</th></tr></thead>
@@ -540,33 +540,9 @@
 
     <p>This repo builds four of the five. The brokered answer is not built.</p>
 
-    <h2 id="what-agentcore-ships">What AgentCore Ships, and Where It Stops</h2>
-
-    <p>Before building a custom grant store, the obvious question is whether AgentCore already handles time-boxed access out of the box. It comes close: AWS ships <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html">Dogwood</a>, a policy language that extends Cedar's authorization model with stateful, session-aware conditions, so a policy can reason over what happened earlier in a session (<a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal-authoring.html">authoring guide</a>; good background on the policy-session mechanics in <a href="https://sph.sh/en/posts/dogwood-temporal-policy-language/">sph.sh's writeup</a> and a practical walkthrough at <a href="https://subagentic.ai/howtos/how-to-write-your-first-temporal-policy-agentcore-dogwood/">subagentic.ai</a>).</p>
-
-    <p>The limit is whose history a policy can see. A policy looks at one session, and on a Gateway that authenticates its callers a session belongs to one caller. AWS's <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-session-based-temporal.html">documentation</a> says: "Two different callers supplying the same session ID get isolated sessions &mdash; the identity is part of the session key." So a policy that runs on Maya's request sees what Maya did earlier in her session, and nothing that Liam did in his.</p>
-
-    <ul>
-    <li>What it can check: "Did Maya call RunTests before calling Deploy?" One person, one session. AWS's own examples are of this kind, including "require an approval before a payout", where the approval and the payout are two calls in the same session.</li>
-    <li>What it cannot see: "Did Liam approve a grant for Maya?" Two people, two sessions.</li>
-    </ul>
-
-    <p>A grant is a handshake between two people: one asks and another approves, often hours apart. The approval has to be stored somewhere that outlives both sessions and that both people's requests can reach. That is a table, not a session history.</p>
-
-    <p>We tested both halves of that on a separate Gateway, so it is observed and not only read:</p>
-
-    <ul>
-    <li><strong>One caller cannot see another's history.</strong> User B called a tool in session X. A moment later user A, sending the same session ID, was refused an action that needed that call. Sessions are per caller, as the AWS page says.</li>
-    <li><strong>A policy can enforce the order of one caller's own calls.</strong> A read was allowed only after a grant check for the same namespace had succeeded in the same session, and refused with no check, with a check for another namespace, with a check that failed or returned "not active", and once the policy's one-minute window had passed.</li>
-    </ul>
-
-    <p>So Dogwood could be a second gate in front of a crossing: "no read unless this caller's grant was checked first". It is not in this build, for three reasons. The window is fixed in the policy text and not taken from the grant, so it is less exact than the deadline IAM enforces. It cannot see a revocation, which happens in the owner's session. And once a policy engine holds one such policy, every request to the Gateway must carry a session ID header or it fails.</p>
-
-    <p>That's why the grant lives in its own table, <code>GrantStore</code>. Cedar does less here than the name on the box suggests, and it is better to say so: today it holds one baseline <code>permit</code> for the tools, and the department rule it was meant to enforce cannot fire on this auth path (more on that below). The grant is checked in the tools Lambda, and the read it allows is then enforced by IAM. Static isolation stays as it is; <code>GrantStore</code> sits on top as an audited exception layer.</p>
-
     <h2 id="lifecycle">The Lifecycle</h2>
 
-    <p>Request, approve, use within the window, expire automatically, audit trail throughout. No manual cleanup step: expiry is checked lazily, the next time anyone asks rather than on a cron.</p>
+    <p>A grant is a row in its own table, <code>GrantStore</code>, on top of the static isolation and not in place of it. Request, approve, use within the window, expire automatically, audit trail throughout. No manual cleanup step: expiry is checked lazily, the next time anyone asks rather than on a cron.</p>
 
     <div class="sketch col">
       <div class="box wobble-a">Maya requests access<br><span class="sub">into Legal's domain, with a reason</span></div>
@@ -628,7 +604,7 @@
 
     <p>The grant itself proved out exactly as designed, end to end, against the real stack: Maya's own first search, with no grant yet, came back <code>403 "no static claim, and no active grant"</code>; once Liam approved, the same search returned the fact; a write under that same grant came back <code>403 "a grant never allows a write"</code>; and once the three-minute window closed, the same search was refused again - the grant doesn't linger past its own expiry.</p>
 
-    <h2 id="aws-enforces">AWS Enforces It, Not Our Code</h2>
+    <h2 id="aws-enforces">AWS Enforces Every Read</h2>
 
     <p>Up to here the boundary is one Python <code>if</code>. That is not good enough for a system whose whole job is a boundary. If the tools Lambda could read all of memory, then one bug in that <code>if</code>, or one new code path that forgets it, would open everything, and nothing would notice.</p>
 
@@ -697,7 +673,7 @@
     <li><strong>The source is on the record.</strong> Who published it, for which department, and when. A reader gets that with the fact.</li>
     </ul>
 
-    <p>Run against the deployed stack:</p>
+    <p>Run against the deployed stack (shortened):</p>
 
     <pre><code>Maya publishes for legal    403  "does not own domain 'legal' in org 'robotinc'"
 Liam publishes for legal    200  a record ID, published_by liam@robotinc.example
@@ -752,7 +728,7 @@ Maya writes to org_robotinc_published
 
     <p>Approving a grant on trust is half a control. The other half is being able to see what was done with it. Every read and every write goes to the audit table, allowed or refused, and a read under a grant is filed under that grant. If the read cannot be recorded, nothing is returned.</p>
 
-    <p><code>grant_activity</code> shows one grant's whole trail to the two people it concerns, the owner and the requester:</p>
+    <p><code>grant_activity</code> shows one grant's whole trail to the two people it concerns, the owner and the requester (from a live run, shortened):</p>
 
     <pre><code>grant_activity as Liam (the owner):
   requested       maya@robotinc.example, with her reason
@@ -904,7 +880,7 @@ grant_activity as Priya (neither):
 
     <span class="prompt">&gt; approve it</span>
 
-    <span class="tool">&#9679; approve_access(grant_id: "a9f27e14-...")</span>
+    <span class="tool">&#9679; approve_access(grant_id: "fbc36a47-...")</span>
       <span class="ok">approved by maya@robotinc.example</span>
       <span class="dim">window closes in 4h</span></pre>
     </div>
@@ -966,6 +942,30 @@ grant_activity as Priya (neither):
     <p>Nothing was re-issued and nobody signed in again. The three Engineering tools and the Memory namespace went away together when the window closed, because <code>allowed_tools()</code> and <code>GuardedMemory</code> read the same grant.</p>
 
     <p>The last field is there because <code>whoami</code> first claimed the one real Gateway tool was department-gated, as the policy intended. Checking that against real traffic showed the gate does not hold, so <code>whoami</code> now reports what is true.</p>
+
+    <h2 id="what-agentcore-ships">Why Not AgentCore's Own Time-Aware Policies?</h2>
+
+    <p>The obvious question about all of the above is whether AgentCore already handles time-boxed access, with no custom grant table. It comes close: AWS ships <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal.html">Dogwood</a>, a policy language that extends Cedar's authorization model with stateful, session-aware conditions, so a policy can reason over what happened earlier in a session (<a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-temporal-authoring.html">authoring guide</a>; good background on the policy-session mechanics in <a href="https://sph.sh/en/posts/dogwood-temporal-policy-language/">sph.sh's writeup</a> and a practical walkthrough at <a href="https://subagentic.ai/howtos/how-to-write-your-first-temporal-policy-agentcore-dogwood/">subagentic.ai</a>).</p>
+
+    <p>The limit is whose history a policy can see. A policy looks at one session, and on a Gateway that authenticates its callers a session belongs to one caller. AWS's <a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-session-based-temporal.html">documentation</a> says: "Two different callers supplying the same session ID get isolated sessions &mdash; the identity is part of the session key." So a policy that runs on Maya's request sees what Maya did earlier in her session, and nothing that Liam did in his.</p>
+
+    <ul>
+    <li>What it can check: "Did Maya call RunTests before calling Deploy?" One person, one session. AWS's own examples are of this kind, including "require an approval before a payout", where the approval and the payout are two calls in the same session.</li>
+    <li>What it cannot see: "Did Liam approve a grant for Maya?" Two people, two sessions.</li>
+    </ul>
+
+    <p>A grant is a handshake between two people: one asks and another approves, often hours apart. The approval has to be stored somewhere that outlives both sessions and that both people's requests can reach. That is a table, not a session history.</p>
+
+    <p>We tested both halves of that on a separate Gateway, so it is observed and not only read:</p>
+
+    <ul>
+    <li><strong>One caller cannot see another's history.</strong> User B called a tool in session X. A moment later user A, sending the same session ID, was refused an action that needed that call. Sessions are per caller, as the AWS page says.</li>
+    <li><strong>A policy can enforce the order of one caller's own calls.</strong> A read was allowed only after a grant check for the same namespace had succeeded in the same session, and refused with no check, with a check for another namespace, with a check that failed or returned "not active", and once the policy's one-minute window had passed.</li>
+    </ul>
+
+    <p>So Dogwood could be a second gate in front of a crossing: "no read unless this caller's grant was checked first". It is not in this build, for three reasons. The window is fixed in the policy text and not taken from the grant, so it is less exact than the deadline IAM enforces. It cannot see a revocation, which happens in the owner's session. And once a policy engine holds one such policy, every request to the Gateway must carry a session ID header or it fails.</p>
+
+    <p>That is why the grant lives in its own table. Cedar does less here than the name on the box suggests, and it is better to say so: today it holds one baseline <code>permit</code> for the tools, and the department rule it was meant to enforce cannot fire on this auth path. The grant is checked in the tools Lambda, and the read it allows is then enforced by IAM.</p>
 
     <h2 id="rules">The Rules It Follows</h2>
 
@@ -1052,10 +1052,11 @@ call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 
     <pre><code>call "$LIAM" publish_fact '{"department":"legal","text":"The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal."}'
 call "$MAYA" memory_search '{"query":"X-7 classification"}'      # no namespace, no grant</code></pre>
 
-    <p>6. The proof that AWS enforces the visa. It needs your own role in the visa role's trust policy, so deploy once more with <code>-c visaDemoPrincipalArn=&lt;your role ARN&gt;</code>, then:</p>
+    <p>6. The two proofs that AWS enforces the boundary. It needs your own role in the visa role's trust policy, so deploy once more with <code>-c visaDemoPrincipalArn=&lt;your role ARN&gt;</code>, then:</p>
 
     <pre><code>pip install boto3
-python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60</code></pre>
+python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60
+python3 demo/publish_boundary_demo.py     # IAM refuses a direct write outside a published namespace</code></pre>
 
     <p>7. Stop the billing when you are done: <code>cd cdk &amp;&amp; npx cdk destroy --all</code>.</p>
 
@@ -1077,7 +1078,7 @@ python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --othe
 
     <p>Everything else here you can verify yourself. In November 2026, AWS's own security team published <a href="https://aws.amazon.com/blogs/security/securely-exposing-amazon-bedrock-agentcore-runtime/">"Securely exposing Amazon Bedrock AgentCore Runtime"</a> - solving runtime ingress rather than cross-domain memory grants, yet landing on the exact same primitive: a request interceptor extracting verified identity ahead of Cedar policy enforcement. Two teams converging on the same architecture independently is what happens once identity propagation is taken seriously.</p>
 
-    <p>That matters because this stack moves fast. AgentCore only hit <a href="https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-agentcore-available">general availability</a> in October 2025, and the original Bedrock Agents service <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html">closed to new customers</a> under ten months later. Nothing in <code>memory-visa</code> bets on any single managed runtime staying put: Cedar, OAuth, and MCP are open standards that outlive any one vendor's SDK. When the underlying runtime inevitably shifts again, the part that survives is the pattern - verified identity, policy enforcement at the gateway, and an external entitlements layer sitting on top of static isolation. Swap the gateway, let every department pick its own agent framework, and the boundary model still holds.</p>
+    <p>That matters because this stack moves fast. AgentCore only hit <a href="https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-agentcore-available">general availability</a> in October 2025, and the original Bedrock Agents service <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html">closed to new customers</a> under ten months later. Nothing in <code>memory-visa</code> bets on any single managed runtime staying put: OAuth and MCP are open standards and Cedar is open source; they outlive any one vendor's SDK. When the underlying runtime inevitably shifts again, the part that survives is the pattern - identity taken from the verified token, an entitlements layer for exceptions on top of static isolation, and short-lived credentials that the platform scopes for each read. Swap the gateway, let every department pick its own agent framework, and the boundary model still holds.</p>
 
     <p>Clone the repo, run <code>make eval</code>, and try to break it: request access as someone who shouldn't get it, approve your own request, replay a token after its window closes. If anything gets through that shouldn't, that's a real issue. Go fix it.</p>
 

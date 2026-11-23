@@ -40,6 +40,27 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 
 The three live checks above are done (T3, T4, S12) - see each row for the result.
 
+### Tenth review: the whole blog, read end to end
+
+23 November 2026, at `ba07194`. About 6,800 words in 22 sections. Each finding is fixed
+unless the last column says otherwise.
+
+| # | Severity | Finding | State |
+|---|---|---|---|
+| X1 | Medium | **The section on AgentCore's temporal policies came too early.** It is a long "why not the built-in feature" argument, now with the spike results, and it sat before the reader had seen what a grant is | Moved to after `whoami`, before the rules, as "Why Not AgentCore's Own Time-Aware Policies?". "The Lifecycle" now introduces the grant table in one sentence |
+| X2 | Medium | **One grant had two IDs.** In Jordan's transcripts the request showed `fbc36a47-...` and Maya's approval showed `a9f27e14-...`. The commit that refreshed them says they are one continuous run | Fixed to `fbc36a47-...` in both. Check it against your capture |
+| X3 | Low | **The heading "AWS Enforces It, Not Our Code"** still claimed more than the section says | Now "AWS Enforces Every Read" |
+| X4 | Low | **The closing pattern left out the strongest idea** and listed "policy enforcement at the gateway", which the post says does little here | Now: identity from the verified token, an entitlements layer for exceptions, short-lived credentials the platform scopes for each read |
+| X5 | Low | "Cedar, OAuth, and MCP are open standards" | Now "OAuth and MCP are open standards and Cedar is open source" |
+| X6 | Low | The published-facts and `grant_activity` blocks are shortened run records, shown without saying so | Each now says "shortened" |
+| X7 | Low | The second proof script was not in the Quickstart | Added to step 6 |
+| X8 | Low | "every agent can now see everything"; "the failure this post started with" | Reworded |
+| X9 | Medium | **Two voices.** The original paragraphs are conversational, with " - " asides. The sections added on 23 November are plain and short. A reader will notice the join | **Open, Jake.** One pass in your own voice over the new sections: "AWS Enforces Every Read", "Publish Once", "One Search", "What the Owner Sees", "The Visa Belongs to a Person", "The Rules It Follows" |
+| X10 | Medium | **"Maya Gets Her Fact" still shows the first run's JSON**, without provenance, and then explains what a result looks like today | **Open, Jake.** Replace both blocks with a fresh capture and delete the explaining paragraph |
+| X11 | Low | **The title is literal** and does not carry the thesis line (D4) | **Open, Jake.** Your call |
+| X12 | Low | The request-path diagram does not show the interceptor, which the post leans on | **Open.** I did not add it because I am not sure whether the Gateway runs the interceptor before or after the policy engine |
+| X13 | - | Length. The post is long, but each section now makes one point and the Quickstart is a third of it | None |
+
 ### Ninth review: the AWS pages on temporal policies, read in full
 
 23 November 2026. Jake asked whether the per-caller claim is true. I read the three pages
