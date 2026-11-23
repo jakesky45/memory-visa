@@ -1,6 +1,6 @@
 # memory-visa
 
-> Visas, not keys: time-boxed, human-approved, audited access across isolated AI-agent memory, on AWS Bedrock AgentCore. A grant is given to a person; their agent acts for them. Each read uses credentials that IAM limits to one namespace and one deadline.
+> Time-boxed, human-approved, audited access across isolated AI-agent memory, on AWS Bedrock AgentCore. A grant is given to a person; their agent acts for them. Each read uses credentials that IAM limits to one namespace and one deadline.
 
 Static isolation keeps two organizations' - or two departments' - AI agents apart. It can't let them legitimately cross over on purpose, for a stated reason, for a limited time. This project is that second part: a grant store sitting on top of static isolation, not instead of it.
 

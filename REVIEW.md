@@ -60,11 +60,23 @@ acts as them: an AI client, or the agent in `src/agents/chat_agent.py`.
 | H6 | Low | **The brokered answer needs agent identity**, which is why it is not built | Said in the post |
 | H7 | Low | **The README still said "built on Cedar" and "Cedar policy and Cognito JWT claims, nothing custom"** (B3) | Fixed |
 
-**The title.** Jake: the title and heading were dull. Now: "Visas, Not Keys", with "How
-teams share what their AI agents know, without handing over the building", and a tagline
-that carries the people-and-agents point: "The person holds it, their agent travels on it,
-and the border guard is AWS." The talk's thesis line (D4) is unchanged and is still the
-pitch's primary title; "Visas, Not Keys" is added there as an alternate.
+**The title.** "Visas, Not Keys" was tried and taken back the same day (`581f115`): the
+door and border-guard picture was dropped for a literal title, "Cross-Domain Access Grants on
+Bedrock AgentCore", with the subtitle "Building memory-visa: human-approved, time-boxed, and
+enforced by AWS". The coloured box now holds the title and subtitle only; the quote under it
+carries the idea, and the paragraph that repeated the quote word for word is cut. Note: this
+is the title from before the review, and the talk's thesis line (D4) is not in it.
+
+**Eighth review: commits `0cf3bf0` and `581f115`.**
+
+| # | Severity | Finding | State |
+|---|---|---|---|
+| E1 | Medium | **The two `whoami` transcripts were edited by hand** to show today's namespace form and the published namespace, under a heading that presents them as captured in Jordan's session, with a grant dated 21 November. The fields are what the code returns today, but that output was not captured. The note that said so was removed. This is S1 again: output shown as run that was not run | Fixed with one clause that says which part is from the run and which is today's shape. Better: capture it again |
+| E2 | Medium | **Quickstart step 2 installed the CDK into the venv without activating it.** `cdk.json` starts the app with `python3 app.py`, so `npx cdk deploy` uses whichever Python is on the path, and fails with no `aws_cdk` if the venv is not active. It also assumed the venv from the offline step exists | Fixed: step 2 creates and activates the venv |
+| E3 | Low | **The new tagline said "Engineering's agent has no business reading Legal's files"**, which is the agents-own-memory wording removed in H1. It also repeated the quote under it | Gone: Jake asked for the tagline to be removed from the coloured box |
+| E4 | Low | The opening's third paragraph repeated the quote word for word | Cut to two sentences |
+| E5 | Low | README and the pitch still called the blog "Visas, not keys" | Fixed |
+| - | - | "Legal should publish it once for the whole org": a good fix. "In public" did read as the internet | None |
 
 **Decided 23 November 2026 (Jake): one model only.** The post is about people and teams
 sharing what their agents know. Access belongs to the person. The three-model table is cut,

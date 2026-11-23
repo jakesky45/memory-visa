@@ -15,7 +15,7 @@ on purpose.* Not final - see "Open items" at the end before submitting.
 
 ### Alternates
 
-- Visas, Not Keys: How Teams Share What Their AI Agents Know (the blog's title since 23 November 2026)
+- Visas, Not Keys: How Teams Share What Their AI Agents Know
 - The Exception Path: Time-Boxed, Human-Approved Memory Sharing on Bedrock AgentCore
 - Sharing Agent Memory at Scale: Five Patterns, and the One That Needs a Human
 

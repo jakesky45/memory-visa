@@ -431,7 +431,6 @@
     <header class="hero">
       <h1>Cross-Domain Access Grants on Bedrock AgentCore</h1>
       <p class="hero-sub">Building memory-visa: human-approved, time-boxed, and enforced by AWS</p>
-      <p class="hero-tagline">Isolation is the easy half. Most days, Engineering's agent has no business reading Legal's files, and neither should read Finance's. When a real deadline requires a crossing, a visa lets one named person through, for a stated reason, until a fixed timestamp - and AWS refuses the next read once the window closes.</p>
     </header>
 
     <div class="badges">
@@ -453,7 +452,7 @@
 
     <p>She's in Engineering at Robotinc. Her packaging manifest needs one specific fact from Legal's files: an export-control classification. She doesn't have access to it - it's Legal's domain, and for good reason most days of the year.</p>
 
-    <p>This is the actual test of any access-control system, and it's a more interesting one than "can I keep people out." Anyone can lock a door. The hard version is: can I let the right person in, on purpose, for a stated reason, for exactly as long as it takes, without leaving the door open behind them? Can I prove, afterward, exactly who let them in and why?</p>
+    <p>That is the real test of an access-control system, and it's a more interesting one than "can I keep people out". And afterwards: can I prove exactly who let them in, and why?</p>
 
     <p>AWS Bedrock AgentCore already ships the parts for the "keep people out" half: a Gateway with a policy engine, Cognito sign-in, and namespaces in Memory. None of that gets reinvented here. What it doesn't ship is Maya's situation: a deliberate, temporary, audited crossing of a boundary that's supposed to hold every other day of the year.</p>
 
@@ -895,7 +894,7 @@ grant_activity as Priya (neither):
 
     <h2 id="what-a-caller-gets">What a Caller Actually Gets</h2>
 
-    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active:</p>
+    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active (the grant and its times are from the run on 21 November; the namespace fields are shown as <code>whoami</code> returns them today):</p>
 
     <div class="terminal">
       <div class="titlebar">
@@ -988,7 +987,8 @@ DIGEST=$(aws ecr describe-images --repository-name memory-visa-orchestrator --im
 
     <p>2. Deploy. This is three stacks: network, Guardrail, and AgentCore (Cognito, Gateway, policy engine, Lambdas, DynamoDB, Memory, Runtime).</p>
 
-    <pre><code>cd cdk &amp;&amp; ../.venv/bin/pip install -r requirements.txt
+    <pre><code>python3 -m venv .venv &amp;&amp; source .venv/bin/activate     # the CDK runs the app with this Python
+cd cdk &amp;&amp; pip install -r requirements.txt
 npx cdk deploy --all --require-approval never -c orchestratorImageDigest=$DIGEST
 cd ..</code></pre>
 
@@ -1035,7 +1035,7 @@ call "$MAYA" memory_search '{"query":"X-7 classification"}'      # no namespace,
 
     <p>6. The proof that AWS enforces the visa. It needs your own role in the visa role's trust policy, so deploy once more with <code>-c visaDemoPrincipalArn=&lt;your role ARN&gt;</code>, then:</p>
 
-    <pre><code>source .venv/bin/activate &amp;&amp; pip install boto3
+    <pre><code>pip install boto3
 python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60</code></pre>
 
     <p>7. Stop the billing when you are done: <code>cd cdk &amp;&amp; npx cdk destroy --all</code>.</p>
