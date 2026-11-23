@@ -279,7 +279,7 @@ not need one.
 | 8 | Claude | ~~Search across every namespace the caller may read (N7)~~ **Done, deployed and proven live.** Found a real pre-existing bug along the way (Q4): a caller's own user namespace can't be read, ever - M8's redesign, not a small fix | "N7: one search across what you may read" |
 | 8 | Claude | ~~Deploy the fix for Q4 (a person's own namespace) and run the check~~ **Done, deployed and proven live** | "N7: one search across what you may read" |
 | 8a | Jake | Stop GitHub serving the old commits that hold the account and policy IDs: ask GitHub Support to remove them, or delete the repository and push it again. Then delete `/tmp/memory-visa-before-scrub.bundle` on the first machine | U9 |
-| 8b | Jake | Run the proof that IAM refuses a direct record write outside a published namespace (P6): `cdk deploy MemoryVisaAgentCore -c visaDemoPrincipalArn=<your role ARN>`, then `python3 demo/publish_boundary_demo.py`. Expected: line 1 ALLOWED, lines 2 and 3 `REFUSED by AWS: AccessDeniedException`. The deploy adds one demo-only role (`memory-visa-publisher-demo`) with the tools Lambda's publish statement and nothing else. Not proven: that `delete_memory_record` clean-up works | `demo/publish_boundary_demo.py` |
+| 8b | Claude | ~~Run the proof that IAM refuses a direct record write outside a published namespace (P6)~~ **Done, 23 November 2026.** See below | `demo/publish_boundary_demo.py` |
 | 8c | Jake | Blog: open the AWS Security Blog post in a browser and check the two claims about it (R9). At the next live run, capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10). Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
@@ -371,8 +371,24 @@ need yet to issue visas side by side; and scores across the published namespace 
 grant-scoped department namespace ranked sensibly against each other (the published fact
 came first both times).
 
-P6 (IAM refuses a direct write outside a published namespace) is still unverified. The
-proof script is written: `demo/publish_boundary_demo.py`. See "What now", row 8b.
+**P6, run 23 November 2026, against the deployed stack:**
+
+```
+Role memory-visa-publisher-demo. Its whole permission, the same statement the tools Lambda has:
+[the publish_statement JSON - one BatchCreateMemoryRecords allow, StringLike on org_*_published / /org_*_published/]
+
+1. org_demo_published                               ALLOWED: record mem-7f679894-...
+2. org_robotinc_dept_legal                          REFUSED by AWS: AccessDeniedException
+3. org_robotinc_user_maya_at_robotinc_dot_example   REFUSED by AWS: AccessDeniedException
+
+Deleted the proof record mem-7f679894-... with your own credentials.
+```
+
+Exactly as predicted, and the clean-up (`delete_memory_record`, the one thing this script
+had never exercised) worked too. IAM itself refuses the write outside a published
+namespace - this was never only the Python check. The demo role and its SSM parameter are
+still in the stack (`-c visaDemoPrincipalArn=...` only; absent otherwise), the same pattern
+as the visa role.
 
 **Fixed in code after the run, without the M8 redesign. Deployed and proven live the same
 day.** The first note here said the fix needed M8. It does not: only the person's own
