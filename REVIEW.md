@@ -21,7 +21,7 @@ Four stages. Nothing in a later stage is built until the one before it is proven
 |---|---|---|---|
 | 1. Safe and true | Nothing wrong goes live, and the blog claims nothing that has not run | Claude | **Done.** See "Stage 1" below |
 | 2. Deploy and prove | The visa, proven against AWS | Claude, with Jake's AWS session | **Done.** See "Stage 2" below |
-| 2b. Finish the live checks | Three small checks stage 2 left out | Jake | To do: see "Third review" |
+| 2b. Finish the live checks | Three small checks stage 2 left out | Claude, with Jake's AWS session | **Done.** See "Third review" below |
 | 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | To do |
 | 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
 
@@ -32,28 +32,18 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 
 | # | Severity | Finding | Fix |
 |---|---|---|---|
-| T1 | High | **The "Gateway bug" (S12) is the shell.** A valid response printed with zsh's `echo` gives the exact broken string that was published as proof. The claim was in the blog, the README, this file and a commit message | Corrected in the blog, README and S12. Run the one-minute check in S12 to confirm |
+| T1 | High | **The "Gateway bug" (S12) is the shell.** A valid response printed with zsh's `echo` gives the exact broken string that was published as proof. The claim was in the blog, the README, this file and a commit message | **Confirmed.** The one-minute check in S12 passed: `curl -o` straight into Python parses clean, top level and nested. S12 closed below |
 | T2 | Medium | **The sandbox account ID was in this public file.** `cdk/app.py` says the account ID is never in git | Removed from this file. It is still in the history of `4b31130` |
-| T3 | Medium | **The Guardrail has not seen a secret live.** The one live write was plain text. Masking and blocking are proven offline only | Check 1 below |
-| T4 | Low | **Which namespace form IAM matched is not recorded.** A8 line 1 was allowed, so one of the two forms in the policy matched. Knowing which lets the other be removed | Check 2 below |
+| T3 | Medium | **The Guardrail has not seen a secret live.** The one live write was plain text. Masking and blocking are proven offline only | **Checked.** A fake access key, written live, was gone by the time it came back through search - extraction reworded it to "(key value omitted for security)", no raw or masked key text anywhere in the result. A fake private key, written live, came back `422 "this content may not be stored: the Guardrail blocked it"`, and nothing was stored. Both as designed |
+| T4 | Low | **Which namespace form IAM matched is not recorded.** A8 line 1 was allowed, so one of the two forms in the policy matched. Knowing which lets the other be removed | **Checked, and the answer is odd: both matched independently.** A session policy naming only `/org_robotinc_dept_legal/` allowed the read; a separate one naming only the bare `org_robotinc_dept_legal` also allowed it. AgentCore's `bedrock-agentcore:namespace` condition key appears to match this namespace in either representation - I don't have a documented explanation for why, only the two results. Listing both forms in `namespace_condition_values` is still the safe choice; there's no evidence either is the one doing the work |
 | T5 | Low | **S5 is closed.** The Lambda's built-in AWS SDK knows the AgentCore API: the live write and search worked | None |
 
-Three live checks to finish stage 2. Use a shell that does not rewrite the output (`curl -o`,
-or pipe straight to `jq`):
-
-1. **The Guardrail, with fake secrets.** As Liam, `memory_write` the text
-   `Deploy key AKIAABCDEFGHIJKLMNOP for the staging bucket` into Legal's namespace: expect a
-   200, and after extraction the search returns the text with the key masked. Then write
-   `-----BEGIN RSA PRIVATE KEY----- MIIEfake`: expect a 422 and nothing stored.
-2. **The namespace form.** Run the demo script with `--namespace /org_robotinc_dept_legal/`.
-   If that is allowed and the plain form is refused, or the reverse, tell me which.
-3. **S12.** The check in that section.
+The three live checks above are done (T3, T4, S12) - see each row for the result.
 
 ### What now
 
 | Who | What | Where |
 |---|---|---|
-| Jake | Run the three live checks that finish stage 2 (about ten minutes) | "Third review", under "Three live checks" |
 | Jake | Decide how the agent learns who is talking to it (D9), and which model it uses (D10) | "Your decisions" |
 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
 | Claude | Build the agent, once D9 is answered | "Stage 3: the plan" |
@@ -150,10 +140,9 @@ curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $LIAM" \
 sed -n 's/^data: //p' /tmp/resp.txt | python3 -c 'import json,sys; d=json.load(sys.stdin); print("valid JSON"); print(json.loads(d["result"]["content"][0]["text"]))'
 ```
 
-If that prints "valid JSON", close S12. If it fails with the bytes straight from `curl -o`,
-tell me, and I am wrong: restore the claim with `git revert` of this change.
-
-**Do not open an AWS support case, and do not say this on stage, until that check has run.**
+**Run 23 November 2026, on the same machine: it printed "valid JSON" at both levels, nested
+included. S12 is closed.** No AWS support case. The response was always valid; the `echo` in
+the original debugging session was the only thing that broke it.
 
 The lesson for the runbook: capture responses with `curl -o` or pipe `curl` straight into
 the parser. Never through `echo` in zsh.
