@@ -18,7 +18,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from .grants import GrantStore
+from .grants import Grant, GrantStore
+from .visa_credentials import DEFAULT_STATIC_WINDOW
 
 AWS_ACCESS_KEY_PATTERN = re.compile(r"AKIA[0-9A-Z]{16}")
 
@@ -56,6 +57,12 @@ class MemoryBackend(Protocol):
 
     def retrieve(self, namespace: str, query: str) -> list[dict]: ...
 
+    # Optional. A backend that has it is asked to read with credentials limited to
+    # this namespace until `not_after` (memory/visa_credentials.py), so AWS enforces
+    # the decision GuardedMemory just made:
+    #
+    #   def retrieve_scoped(self, namespace, query, *, not_after, now, requester, grant_id) -> list[dict]
+
 
 class GuardedMemory:
     def __init__(self, memory_client: MemoryBackend, apply_guardrail, grant_store: GrantStore):
@@ -70,11 +77,20 @@ class GuardedMemory:
         return allowed
 
     def _check(self, claims: UserClaims, namespace: str, now: dt.datetime) -> None:
-        if namespace not in self.allowed_namespaces(claims, now):
-            raise PermissionError(
-                f"{claims.email} has no access to namespace '{namespace}' "
-                "(no static claim, and no active grant)"
-            )
+        self._authorising_grant(claims, namespace, now)
+
+    def _authorising_grant(self, claims: UserClaims, namespace: str, now: dt.datetime) -> Grant | None:
+        """Why this caller may use this namespace: None for a static claim, or the active
+        grant that opens it. Raises PermissionError when neither applies."""
+        if namespace in static_namespaces(claims):
+            return None
+        for grant in self._grants.active_grants_for(requester_namespace(claims), now):
+            if grant.target_namespace == namespace:
+                return grant
+        raise PermissionError(
+            f"{claims.email} has no access to namespace '{namespace}' "
+            "(no static claim, and no active grant)"
+        )
 
     def put(self, claims: UserClaims, namespace: str, text: str, now: dt.datetime) -> dict:
         self._check(claims, namespace, now)
@@ -82,5 +98,20 @@ class GuardedMemory:
         return self._memory.put(namespace, sanitized)
 
     def retrieve(self, claims: UserClaims, namespace: str, query: str, now: dt.datetime) -> list[dict]:
-        self._check(claims, namespace, now)
-        return self._memory.retrieve(namespace, query)
+        grant = self._authorising_grant(claims, namespace, now)
+
+        retrieve_scoped = getattr(self._memory, "retrieve_scoped", None)
+        if retrieve_scoped is None:
+            return self._memory.retrieve(namespace, query)
+
+        # The read ends when the grant ends. A read of the caller's own namespace
+        # has no grant, so it gets a short fixed window.
+        not_after = grant.approved_at + grant.duration if grant else now + DEFAULT_STATIC_WINDOW
+        return retrieve_scoped(
+            namespace,
+            query,
+            not_after=not_after,
+            now=now,
+            requester=claims.email,
+            grant_id=grant.grant_id if grant else None,
+        )

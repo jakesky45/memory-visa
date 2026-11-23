@@ -29,11 +29,14 @@ from agents.access_requests import (
 from memory.agentcore_backend import AgentCoreMemoryBackend
 from memory.grants_dynamodb import DynamoGrantStore
 from memory.guarded_memory import GuardedMemory, PermissionError as GuardedMemoryPermissionError, UserClaims
+from memory.visa_credentials import VisaIssuer
 
 MEMORY_ID = os.environ.get("MEMORY_ID", "")
 REGION = os.environ.get("AWS_REGION", "eu-west-2")
 GRANTS_TABLE = os.environ.get("GRANTS_TABLE_NAME", "")
 GRANTS_AUDIT_TABLE = os.environ.get("GRANTS_AUDIT_TABLE_NAME", "")
+VISA_ROLE_ARN = os.environ.get("VISA_ROLE_ARN", "")
+MEMORY_ARN = os.environ.get("MEMORY_ARN", "")
 
 # Same DynamoDB-backed store the tier-two MCP tools (AccessRequestTools) read
 # and write - not a second, disconnected in-process one. A grant Liam
@@ -41,7 +44,15 @@ GRANTS_AUDIT_TABLE = os.environ.get("GRANTS_AUDIT_TABLE_NAME", "")
 # checks before letting Maya's retrieve through.
 _grants = DynamoGrantStore(GRANTS_TABLE, GRANTS_AUDIT_TABLE, region=REGION) if GRANTS_TABLE else None
 _apply_guardrail = lambda text: text  # the Bedrock Guardrail attaches at the model-invocation layer, not here
-_memory = GuardedMemory(AgentCoreMemoryBackend(MEMORY_ID, REGION), _apply_guardrail, _grants) if MEMORY_ID and _grants else None
+# Reads of long-term memory go through a visa: credentials AWS limits to one namespace
+# until the grant ends (memory/visa_credentials.py). Without the role, reads use this
+# process's own role, as before.
+_visa_issuer = VisaIssuer(VISA_ROLE_ARN, MEMORY_ARN) if VISA_ROLE_ARN and MEMORY_ARN else None
+_memory = (
+    GuardedMemory(AgentCoreMemoryBackend(MEMORY_ID, REGION, visa_issuer=_visa_issuer), _apply_guardrail, _grants)
+    if MEMORY_ID and _grants
+    else None
+)
 
 
 def _log_usage(claims: UserClaims, action: str, namespace: str, query: str | None = None) -> None:

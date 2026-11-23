@@ -725,10 +725,60 @@ class AgentCoreStack(Stack):
         )
         self.runtime_role.add_to_policy(
             iam.PolicyStatement(
-                # What the orchestrator actually calls: GuardedMemory's
-                # put/retrieve map directly to these two.
-                actions=["bedrock-agentcore:CreateEvent", "bedrock-agentcore:RetrieveMemoryRecords"],
+                # Writes only. The orchestrator's own role can no longer READ memory:
+                # every read goes through the visa role below, with credentials AWS
+                # limits to one namespace until the grant ends.
+                actions=["bedrock-agentcore:CreateEvent"],
                 resources=[self.memory.attr_memory_arn],
+            )
+        )
+
+        # The visa role (src/memory/visa_credentials.py). It may read any namespace,
+        # but nobody uses it as it is: the orchestrator assumes it once per read with
+        # a session policy that narrows it to one namespace and one end time. A
+        # session policy can only narrow a role, so this policy is the ceiling.
+        #
+        # sts:TagSession, so the session carries the grant ID and the requester and
+        # CloudTrail shows which grant a read was made under.
+        self.visa_role = iam.Role(
+            self,
+            "VisaReaderRole",
+            role_name="memory-visa-reader",
+            description="Read AgentCore Memory. Always assumed with a session policy for one namespace and one end time.",
+            assumed_by=iam.ArnPrincipal(self.runtime_role.role_arn),
+            max_session_duration=Duration.hours(1),
+        )
+        self.visa_role.assume_role_policy.add_statements(
+            iam.PolicyStatement(
+                actions=["sts:TagSession"],
+                principals=[iam.ArnPrincipal(self.runtime_role.role_arn)],
+            )
+        )
+        # For demo/visa_credentials_demo.py only: one more principal that may assume the
+        # visa role, so the proof can be run from a laptop. Off unless the context
+        # value is set:  cdk deploy -c visaDemoPrincipalArn=<your role ARN>
+        demo_principal_arn = self.node.try_get_context("visaDemoPrincipalArn")
+        if demo_principal_arn:
+            self.visa_role.assume_role_policy.add_statements(
+                iam.PolicyStatement(
+                    actions=["sts:AssumeRole", "sts:TagSession"],
+                    principals=[iam.ArnPrincipal(demo_principal_arn)],
+                )
+            )
+        self.visa_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock-agentcore:RetrieveMemoryRecords",
+                    "bedrock-agentcore:ListMemoryRecords",
+                    "bedrock-agentcore:GetMemoryRecord",
+                ],
+                resources=[self.memory.attr_memory_arn],
+            )
+        )
+        self.runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["sts:AssumeRole", "sts:TagSession"],
+                resources=[self.visa_role.role_arn],
             )
         )
         self.grants_table.grant_read_write_data(self.runtime_role)
@@ -747,6 +797,8 @@ class AgentCoreStack(Stack):
             role_arn=self.runtime_role.role_arn,
             environment_variables={
                 "MEMORY_ID": self.memory.attr_memory_id,
+                "MEMORY_ARN": self.memory.attr_memory_arn,
+                "VISA_ROLE_ARN": self.visa_role.role_arn,
                 "GRANTS_TABLE_NAME": self.grants_table.table_name,
                 "GRANTS_AUDIT_TABLE_NAME": self.grants_audit_table.table_name,
             },
@@ -847,6 +899,9 @@ class AgentCoreStack(Stack):
             ("user-pool-id", self.user_pool.user_pool_id),
             ("user-client-id", self.user_client.user_pool_client_id),
             ("oauth-callback-port", str(MCP_OAUTH_CALLBACK_PORT)),
+            ("memory-id", self.memory.attr_memory_id),
+            ("memory-arn", self.memory.attr_memory_arn),
+            ("visa-role-arn", self.visa_role.role_arn),
         ]:
             ssm.StringParameter(
                 self,
