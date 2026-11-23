@@ -390,6 +390,7 @@
     <a href="#identity-binding">Identity binding</a>
     <a href="#closing-the-loop">Closing the loop</a>
     <a href="#what-a-caller-gets">whoami</a>
+    <a href="#rules">The rules it follows</a>
     <a href="#quickstart">Quickstart</a>
     <a href="#staleness-risk">Staleness between writes</a>
     <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
@@ -416,7 +417,8 @@
         <a href="#identity-binding">Identity binding</a>
         <a href="#closing-the-loop">Closing the loop</a>
         <a href="#what-a-caller-gets">whoami</a>
-        <a href="#quickstart">Quickstart</a>
+        <a href="#rules">The rules it follows</a>
+    <a href="#quickstart">Quickstart</a>
         <a href="#staleness-risk">Staleness between writes</a>
     <a href="#bet-on-the-pattern">Bet on the pattern, not the platform</a>
       </nav>
@@ -427,7 +429,7 @@
     <header class="hero">
       <h1>Isolated by Default, Shareable on Purpose</h1>
       <p class="hero-sub">memory-visa</p>
-      <p class="hero-tagline">Sharing agent memory across teams on Bedrock AgentCore: published facts for everyone, and a human-approved, time-boxed visa for the exception. AWS enforces both.</p>
+      <p class="hero-tagline">Sharing agent memory across teams on Bedrock AgentCore: published facts for everyone, and a human-approved, time-boxed visa for the exception. Every read uses credentials that AWS limits to one namespace and one deadline.</p>
     </header>
 
     <div class="badges">
@@ -451,21 +453,21 @@
 
     <p>This is the actual test of any access-control system, and it's a more interesting one than "can I keep people out." Anyone can lock a door. The hard version is: can I let the right person in, on purpose, for a stated reason, for exactly as long as it takes, without leaving the door open behind them? Can I prove, afterward, exactly who let them in and why?</p>
 
-    <p>AWS Bedrock AgentCore already ships the "keep people out" half: Cedar policies, Cognito JWT claims, and per-tenant namespace isolation in Memory. It's solid and already shipped, so none of that gets reinvented here. What it doesn't ship is Maya's situation: a deliberate, temporary, audited crossing of a boundary that's supposed to hold every other day of the year.</p>
+    <p>AWS Bedrock AgentCore already ships the parts for the "keep people out" half: a Gateway with a policy engine, Cognito sign-in, and namespaces in Memory. None of that gets reinvented here. What it doesn't ship is Maya's situation: a deliberate, temporary, audited crossing of a boundary that's supposed to hold every other day of the year.</p>
 
     <p>That's the part memory-visa builds, with AWS's own tools and no new infrastructure. It ends up as three answers, not one:</p>
 
     <ul>
     <li><strong>Most facts should not need a crossing at all.</strong> Legal publishes the classification once, with Legal's name on it, and everyone in the company can read it.</li>
     <li><strong>The exception gets a visa.</strong> One person, one namespace, a stated reason, a short window, and a named human who said yes.</li>
-    <li><strong>AWS holds both lines, not our code.</strong> A read happens with credentials that IAM limits to one namespace until one moment. When the window closes, the refusal comes from AWS.</li>
+    <li><strong>AWS holds the line on every read.</strong> Our code decides who gets a visa. The read itself happens with credentials that IAM limits to one namespace until one moment, and when the window closes the refusal comes from AWS.</li>
     </ul>
 
     <h2 id="why-share-memory">Why Share Memory At All</h2>
 
     <p>If you're running more than one AI agent across your org, which most teams past a certain size already are, each agent's memory is usually its own island. Engineering's agent learns things Legal's agent will never see. Finance's agent starts from zero on a question Engineering already answered last quarter. Centralise that memory - one shared, namespaced store instead of five disconnected ones - and the payoff compounds: any agent can draw on what any other agent in the org already knows, not just its own slice.</p>
 
-    <p>The catch shows up the moment you actually try it. Centralised means every agent can now see everything, which is worse than the islands you started with - that's not a hypothetical, it's the first thing that breaks. memory-visa is the piece in between: shared by default stays isolated by default, and crossing that boundary is a deliberate, audited, time-boxed act, not a permanent hole knocked in the wall.</p>
+    <p>The catch shows up the moment you actually try it. Centralised means every agent can now see everything, which is worse than the islands you started with - that's not a hypothetical, it's the first thing that breaks. memory-visa is the piece in between: the store is shared, each team's part of it stays isolated by default, and crossing that boundary is a deliberate, audited, time-boxed act, not a permanent hole in the wall.</p>
 
     <p>None of this requires standardising on one AI client, either. MCP means Maya keeps using Claude, Liam can be on Cursor, Priya on whatever ships next year - they're all calling the same tools behind the same Gateway, into the same memory. Bring your own agent; the memory and the access control are centralised, not the tool everyone's forced to open.</p>
 
@@ -625,9 +627,19 @@
 
     <h2 id="aws-enforces">AWS Enforces It, Not Our Code</h2>
 
-    <p>Up to here the boundary is one Python <code>if</code>. That is not good enough for a system whose whole job is a boundary: a bug in that <code>if</code>, or a second code path that forgets it, and the wall is gone with nothing behind it.</p>
+    <p>Up to here the boundary is one Python <code>if</code>. That is not good enough for a system whose whole job is a boundary. If the tools Lambda could read all of memory, then one bug in that <code>if</code>, or one new code path that forgets it, would open everything, and nothing would notice.</p>
 
-    <p>So the tools Lambda has no permission to read memory at all. For each read it asks STS for temporary credentials, and attaches a session policy that narrows them to one namespace and one deadline. This is the policy for Maya's read, as the code builds it:</p>
+    <p>So the tools Lambda has no permission to read memory at all. For each read it asks STS for temporary credentials, and attaches a session policy that narrows them to one namespace and one deadline:</p>
+
+    <div class="sketch col">
+      <div class="box wobble-a">Tools Lambda<br><span class="sub">checks the grant. Has no permission to read memory</span></div>
+      <div class="arrow-down"><span class="sub">sts:AssumeRole + a session policy</span></div>
+      <div class="box dashed-green wobble-b">The visa<br><span class="sub">credentials for one namespace, until one moment</span></div>
+      <div class="arrow-down"><span class="sub">RetrieveMemoryRecords</span></div>
+      <div class="box wobble-c">AgentCore Memory<br><span class="sub">IAM allows this namespace, before the deadline. Anything else: AccessDenied</span></div>
+    </div>
+
+    <p>This is the session policy for Maya's read, as the code builds it:</p>
 
     <pre><code>{
   "Version": "2012-10-17",
@@ -668,6 +680,8 @@
 
     <p>A read of your own namespace goes the same way, with a short fixed window. There is one path to memory, and it is the narrow one.</p>
 
+    <p>It is worth being exact about what this buys. Our code still decides <em>whether</em> to issue a visa, and for which namespace; a bug there could issue the wrong one. What AWS now guarantees is narrower and still valuable: a read with no visa has no credentials at all; a visa cannot reach a second namespace; it stops at its deadline without anyone cleaning up; and each read is a named STS session in CloudTrail. The check and the enforcement are two separate things, and the enforcement is no longer ours.</p>
+
     <h2 id="published-facts">Publish Once, Read Everywhere</h2>
 
     <p>The visa works, and it is the wrong tool for a fact that half the company needs. If Engineering asks Legal for the X-7 classification every week, the answer is not fifty-two approvals. Legal should say it once, in public.</p>
@@ -693,7 +707,7 @@ Maya searches org_robotinc_published, with no grant:
 Maya writes to org_robotinc_published
                             403  "no static claim, and no active grant"</code></pre>
 
-    <p>No request, no approval, no wait, and it was searchable at once because nothing had to be extracted. IAM holds this line too: the tools Lambda may write a record directly only where the namespace looks like <code>org_*_published</code>.</p>
+    <p>No request, no approval, no wait, and it was searchable at once because nothing had to be extracted. IAM is set to hold this line too: the tools Lambda may write a record directly only where the namespace looks like <code>org_*_published</code>. The allowed case is proven by the run above. The refusal has its own proof script, <code>demo/publish_boundary_demo.py</code>, which has not been run yet.</p>
 
     <p>What is not built yet: taking a published fact back, or replacing it with a newer one.</p>
 
@@ -873,7 +887,7 @@ grant_activity as Priya (neither):
 
     <h2 id="what-a-caller-gets">What a Caller Actually Gets</h2>
 
-    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active:</p>
+    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active (captured on 21 November; today the answer also names the org's published namespace, and a person's own namespace is written <code>org_robotinc_user_jordan_at_contractor_dot_example</code>, because AgentCore does not accept <code>@</code> or <code>.</code> in a namespace):</p>
 
     <div class="terminal">
       <div class="titlebar">
@@ -926,74 +940,103 @@ grant_activity as Priya (neither):
 
     <p>The last field is there because <code>whoami</code> first claimed the one real Gateway tool was department-gated, as the policy intended. Checking that against real traffic showed the gate does not hold, so <code>whoami</code> now reports what is true.</p>
 
-    <h2 id="quickstart">Quickstart</h2>
+    <h2 id="rules">The Rules It Follows</h2>
 
-    <p>The test suite runs offline, with no AWS account: 113 tests, built around six properties:</p>
+    <p>The parts will change. These are the rules they were built to, and the ones worth taking to another stack:</p>
 
     <ol>
-    <li>Cross-org isolation</li>
-    <li>Within-org silo enforcement</li>
-    <li>Legitimate cross-team flow</li>
-    <li>Credential scrubbing</li>
-    <li>The full grant lifecycle for an employee</li>
-    <li>The same lifecycle for a contractor with a narrower default</li>
+    <li><strong>Identity comes from the verified token, never from an argument.</strong> No tool takes an email. The interceptor overwrites anything a caller types.</li>
+    <li><strong>No standing permission to read.</strong> The code that answers a search cannot read memory by itself. It gets credentials for one namespace, for one read.</li>
+    <li><strong>The platform enforces scope and time.</strong> The namespace and the deadline are IAM conditions, not lines of Python.</li>
+    <li><strong>An exception is read-only, has a reason, and ends by itself.</strong> A grant never writes, and nobody has to remember to remove it.</li>
+    <li><strong>The owner of the data decides.</strong> Only a domain's owner approves a grant or publishes a fact, and the owner can see what was done under a grant.</li>
+    <li><strong>No record, no answer.</strong> Every read and write is recorded, allowed or refused. If it cannot be recorded, it does not happen.</li>
+    <li><strong>Fail closed.</strong> Content the Guardrail blocks, or cannot check, is not stored.</li>
+    <li><strong>Say what does not hold.</strong> The Cedar department gate does not work on this auth path, and <code>whoami</code> says so to every caller.</li>
     </ol>
 
-    <p>That's the test suite doing the actual arguing, not a slide:</p>
+    <h2 id="quickstart">Quickstart</h2>
 
-    <pre><code>git clone https://github.com/jakesky45/memory-visa.git && cd memory-visa
-    cd cdk && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt pytest
-    cd .. && PYTHONPATH=src python3 -m pytest tests/eval_rbac_isolation.py -v</code></pre>
+    <p><strong>Without an AWS account.</strong> The test suite runs offline: 113 tests, built around six properties (cross-org isolation, silos inside one org, the legitimate cross-team flow, credential scrubbing, the grant lifecycle for an employee, and the same for a contractor). You need Python 3.10 or later.</p>
 
-    <p>Standing up the live stack behind the round-trip above provisions real, billed AWS infrastructure - a separate step, not covered by <code>make eval</code>.</p>
+    <pre><code>git clone https://github.com/jakesky45/memory-visa.git &amp;&amp; cd memory-visa
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install pytest boto3
+make eval</code></pre>
 
-    <p><strong>1. Deploy the stack</strong> (Cognito, Gateway, Policy Engine, Lambdas, DynamoDB):</p>
+    <p><strong>With an AWS account.</strong> This creates real, billed infrastructure in <code>eu-west-2</code>. You need the AWS CLI with credentials, Node.js (for the CDK), Docker running, <code>jq</code>, and a region that is bootstrapped for the CDK (<code>npx cdk bootstrap</code>, once).</p>
 
-    <pre><code>cd cdk && source .venv/bin/activate
-    cdk deploy MemoryVisaAgentCore --require-approval never</code></pre>
+    <p>1. Build the agent's container image and push it to your own registry. The stack refers to the image by its digest:</p>
 
-    <p><strong>2. Look up what the stack just created.</strong> The deploy writes its own routing info to SSM (names only - nothing secret lives here, the one genuinely sensitive value is the demo password set directly on the Cognito users in the next step and never written to CloudFormation or this template):</p>
+    <pre><code>ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+REPO=$ACCOUNT.dkr.ecr.eu-west-2.amazonaws.com/memory-visa-orchestrator
+aws ecr create-repository --repository-name memory-visa-orchestrator
+aws ecr get-login-password | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.eu-west-2.amazonaws.com
+docker buildx build --platform linux/arm64 -t $REPO:latest --push .
+DIGEST=$(aws ecr describe-images --repository-name memory-visa-orchestrator --image-ids imageTag=latest \
+  --query 'imageDetails[0].imageDigest' --output text)</code></pre>
+
+    <p>2. Deploy. This is three stacks: network, Guardrail, and AgentCore (Cognito, Gateway, policy engine, Lambdas, DynamoDB, Memory, Runtime).</p>
+
+    <pre><code>cd cdk &amp;&amp; pip install -r requirements.txt
+npx cdk deploy --all --require-approval never -c orchestratorImageDigest=$DIGEST
+cd ..</code></pre>
+
+    <p>3. Give Maya and Liam a password, sign in as each, and define one helper. The stack writes its own addresses to Parameter Store. The password is yours; it is never written to the template or the repository. A token lasts one hour.</p>
 
     <pre><code>USER_POOL_ID=$(aws ssm get-parameter --name /memory-visa/user-pool-id --query Parameter.Value --output text)
-    USER_CLIENT_ID=$(aws ssm get-parameter --name /memory-visa/user-client-id --query Parameter.Value --output text)
-    GATEWAY_URL=$(aws ssm get-parameter --name /memory-visa/gateway-url --query Parameter.Value --output text)</code></pre>
+USER_CLIENT_ID=$(aws ssm get-parameter --name /memory-visa/user-client-id --query Parameter.Value --output text)
+GATEWAY_URL=$(aws ssm get-parameter --name /memory-visa/gateway-url --query Parameter.Value --output text)
 
-    <p><strong>3. Give Maya a real Cognito login.</strong> <code>CfnUserPoolUser</code> can't set a password declaratively, so this is the one manual step - same for Liam and Priya:</p>
+for u in maya liam; do
+  aws cognito-idp admin-set-user-password --user-pool-id "$USER_POOL_ID" --username $u --password '&lt;password&gt;' --permanent
+done
 
-    <pre><code>aws cognito-idp admin-set-user-password --user-pool-id "$USER_POOL_ID" \
-      --username maya --password '&lt;temporary-password&gt;' --permanent</code></pre>
+token() { aws cognito-idp initiate-auth --client-id "$USER_CLIENT_ID" --auth-flow USER_PASSWORD_AUTH \
+  --auth-parameters USERNAME=$1,PASSWORD='&lt;password&gt;' --query AuthenticationResult.AccessToken --output text; }
+MAYA=$(token maya); LIAM=$(token liam)
 
-    <p><strong>4. Get Maya's own bearer token</strong> - not the shared service credential:</p>
+# call &lt;token&gt; &lt;tool&gt; '&lt;json arguments&gt;'
+call() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"AccessRequestTools___$2\",\"arguments\":$3}}" \
+  | sed -n 's/^data: //p' | jq '.result // .error'; }</code></pre>
 
-    <pre><code>TOKEN=$(aws cognito-idp initiate-auth --client-id "$USER_CLIENT_ID" --auth-flow USER_PASSWORD_AUTH \
-      --auth-parameters USERNAME=maya,PASSWORD='&lt;temporary-password&gt;' \
-      --query AuthenticationResult.AccessToken --output text)</code></pre>
+    <p>4. The visa, end to end. Liam writes a fact, Maya is refused, Maya asks, Liam approves, Maya reads, the window closes:</p>
 
-    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly lists the tools, scoped to Maya specifically instead of the shared service credential. There are ten today:</p>
+    <pre><code>call "$LIAM" memory_write '{"namespace":"org_robotinc_dept_legal","text":"The X-7 battery pack is classified under export control code 7A994."}'
+sleep 90     # long-term memory is extracted in the background
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # 403
 
-    <pre><code>curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
-      -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-      | sed -n 's/^data: //p' | jq -r '.result.tools[].name'</code></pre>
+call "$MAYA" request_access '{"target_org":"robotinc","target_department":"legal","reason":"Classification for the X-7 before the Q4 shipment.","duration_hours":0.05}'
+call "$LIAM" list_pending '{}'
+call "$LIAM" approve_access '{"grant_id":"&lt;grant_id from the request&gt;"}'
 
-    <pre><code>AccessRequestTools___request_access
-    AccessRequestTools___list_pending
-    AccessRequestTools___approve_access
-    AccessRequestTools___deny_access
-    AccessRequestTools___revoke_access
-    AccessRequestTools___whoami
-    AccessRequestTools___memory_search
-    AccessRequestTools___memory_write
-    AccessRequestTools___grant_activity
-    AccessRequestTools___publish_fact</code></pre>
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # the fact
+call "$MAYA" memory_write '{"namespace":"org_robotinc_dept_legal","text":"Supplier X is cleared."}'   # 403: a grant never writes
+call "$LIAM" grant_activity '{"grant_id":"&lt;grant_id&gt;"}'                                               # what Maya did with it
+sleep 200    # the window was three minutes
+call "$MAYA" memory_search '{"namespace":"org_robotinc_dept_legal","query":"X-7 export control"}'    # 403 again</code></pre>
 
-    <p>One shell note. A tool's result is JSON inside a JSON string, so its quotes are escaped twice. If you capture a response in a variable, print it with <code>printf '%s'</code> and not zsh's <code>echo</code>, which removes one level of backslashes and makes a valid response look broken. Piping <code>curl</code> straight into the parser, as above, avoids it.</p>
+    <p>5. A published fact, and one search across everything Maya may read:</p>
+
+    <pre><code>call "$LIAM" publish_fact '{"department":"legal","text":"The X-7 battery pack is classified 7A994. Shipments to Supplier X need sign-off from Legal."}'
+call "$MAYA" memory_search '{"query":"X-7 classification"}'      # no namespace, no grant</code></pre>
+
+    <p>6. The proof that AWS enforces the visa. It needs your own role in the visa role's trust policy, so deploy once more with <code>-c visaDemoPrincipalArn=&lt;your role ARN&gt;</code>, then:</p>
+
+    <pre><code>pip install boto3
+python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60</code></pre>
+
+    <p>7. Stop the billing when you are done: <code>cd cdk &amp;&amp; npx cdk destroy --all</code>.</p>
+
+    <p>To use an AI client and not <code>curl</code>, give it the Gateway's <code>/mcp</code> address and Maya's token as the bearer token. <code>tools/list</code> then shows the ten tools: <code>request_access</code>, <code>list_pending</code>, <code>approve_access</code>, <code>deny_access</code>, <code>revoke_access</code>, <code>whoami</code>, <code>memory_search</code>, <code>memory_write</code>, <code>grant_activity</code> and <code>publish_fact</code>.</p>
+
+    <p>One shell note. A tool's result is JSON inside a JSON string, so its quotes are escaped twice. If you capture a response in a variable, print it with <code>printf '%s'</code> and not zsh's <code>echo</code>, which removes one level of backslashes and makes a valid response look broken. The <code>call</code> helper pipes straight into <code>jq</code>, which avoids it.</p>
 
     <p>A static token, deliberately. Cognito fully supports the cleaner OAuth <code>authorization_code</code> flow here, but Claude Code has a <a href="https://github.com/anthropics/claude-code/issues/90190">reported issue</a> (closed without a fix when this was written) where it omits the <code>scope</code> parameter when a protected resource's metadata advertises no scopes (AgentCore Gateway always advertises none), which Cognito rejects with <code>invalid_grant</code> on every token exchange. Not ours to fix - the static token sidesteps it entirely.</p>
 
-    <p>This whole setup is built for discovery and live demos, not production traffic. A handful of things make that explicit: on-demand DynamoDB billing instead of provisioned capacity, no NAT gateway on the network stack, and no point-in-time recovery on either table. If you want the Gateway's own per-request traces (Cedar decisions, interceptor runs, Lambda invocations) rather than just the aggregate metrics shown above, that's a separate opt-in - CloudWatch Transaction Search (CloudWatch console &rarr; Settings &rarr; Enable transaction search), billed on span ingestion - worth turning on deliberately for a demo session rather than left running by default.</p>
-
-    <p>When you're done: <code>cdk deploy MemoryVisaAgentCore</code> also deploys its two dependency stacks (network, guardrails), so tearing down needs all three - <code>cd cdk &amp;&amp; cdk destroy --all</code> - or the Cognito pool and DynamoDB tables keep billing after the demo ends.</p>
+    <p>This is built to show a pattern, not to carry production traffic. The limits that would matter first: every read scans the grants table; domain owners are a constant in the code, not a directory lookup; every tool call asks Cognito who the caller is; a search across four namespaces takes two to four seconds; and the tables have no point-in-time recovery. The Gateway's per-request traces (Cedar decisions, interceptor runs, Lambda invocations) are a separate opt-in, CloudWatch Transaction Search, billed on span ingestion.</p>
 
     <h2 id="staleness-risk">One Open Risk: Staleness Between Writes</h2>
 

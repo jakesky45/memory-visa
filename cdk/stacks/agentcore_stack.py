@@ -965,9 +965,14 @@ class AgentCoreStack(Stack):
                     # same-string container_uri means CloudFormation sees no
                     # change and the new image never actually ships. Update
                     # this digest on every push.
+                    # In your own account, pass the digest of the image you pushed:
+                    #   cdk deploy -c orchestratorImageDigest=sha256:...
                     container_uri=(
-                        f"{self.account}.dkr.ecr.{self.region}.amazonaws.com/memory-visa-orchestrator"
-                        "@sha256:c874d2c272e75cc8fb2ead2e5038457be0d500835bc2571081df2fefbdb5ddc1"
+                        f"{self.account}.dkr.ecr.{self.region}.amazonaws.com/memory-visa-orchestrator@"
+                        + (
+                            self.node.try_get_context("orchestratorImageDigest")
+                            or "sha256:c874d2c272e75cc8fb2ead2e5038457be0d500835bc2571081df2fefbdb5ddc1"
+                        )
                     ),
                 ),
             ),

@@ -51,15 +51,16 @@ Deployed in the sandbox account, `eu-west-2`:
 
 ## Quickstart
 
-Needs: Python 3, Node.js (for CDK), the AWS CLI (configured with credentials), `jq`, `curl`.
+Needs: Python 3.10 or later. For the live stack also: Node.js (for CDK), the AWS CLI (configured with credentials), Docker (running), `jq`, `curl`, and `eu-west-2` bootstrapped for the CDK (`npx cdk bootstrap`, once).
 
 <details>
 <summary><strong>1. Offline proof</strong> - no AWS account needed</summary>
 
 ```bash
 git clone https://github.com/jakesky45/memory-visa.git && cd memory-visa
-cd cdk && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt pytest
-cd .. && make eval
+python3 -m venv .venv && source .venv/bin/activate
+pip install pytest boto3
+make eval          # 113 tests
 ```
 
 </details>
@@ -68,9 +69,22 @@ cd .. && make eval
 <summary><strong>2. Deploy the live stack</strong> - real, billed AWS infrastructure</summary>
 
 ```bash
-cd cdk && source .venv/bin/activate
-cdk deploy MemoryVisaAgentCore --require-approval never
+# 1. Build the agent's image and push it to your own registry. The stack names it by digest.
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+REPO=$ACCOUNT.dkr.ecr.eu-west-2.amazonaws.com/memory-visa-orchestrator
+aws ecr create-repository --repository-name memory-visa-orchestrator
+aws ecr get-login-password | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.eu-west-2.amazonaws.com
+docker buildx build --platform linux/arm64 -t $REPO:latest --push .
+DIGEST=$(aws ecr describe-images --repository-name memory-visa-orchestrator --image-ids imageTag=latest \
+  --query 'imageDetails[0].imageDigest' --output text)
+
+# 2. Deploy the three stacks.
+cd cdk && pip install -r requirements.txt
+npx cdk deploy --all --require-approval never -c orchestratorImageDigest=$DIGEST
+cd ..
 ```
+
+The blog's Quickstart goes on from here: sign in as Maya and Liam, run one grant end to end, publish a fact, and run the proof that AWS enforces the visa.
 
 </details>
 
@@ -103,8 +117,7 @@ Same for `liam` and `priya` - `CfnUserPoolUser` can't set a password declarative
 <summary><strong>4. Tear down</strong> - stop the billing</summary>
 
 ```bash
-cd cdk && source .venv/bin/activate
-cdk destroy --all
+cd cdk && npx cdk destroy --all
 ```
 
 `cdk deploy MemoryVisaAgentCore` in step 2 also deploys its two dependency stacks (`MemoryVisaNetwork`, `MemoryVisaGuardrails`); `--all` tears down all three.

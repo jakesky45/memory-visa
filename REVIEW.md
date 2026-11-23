@@ -40,6 +40,40 @@ namespace and after the window.** The idea holds. Stage 3 can start.
 
 The three live checks above are done (T3, T4, S12) - see each row for the result.
 
+### Sixth review: the blog, for sound principles, facts and ease of use
+
+23 November 2026, on `docs/index.html` at `87d2ba5`. Each finding is fixed unless the last
+column says otherwise.
+
+**Sound principles**
+
+| # | Severity | Finding | State |
+|---|---|---|---|
+| R1 | High | **"AWS enforces it, not our code" claimed too much.** The code still decides whether to issue a visa and for which namespace. IAM enforces the scope and the deadline of each read; it does not decide who may read | Fixed. The tagline and the opening now say what AWS enforces. The section has a paragraph on what the visa buys and what it does not |
+| R2 | Medium | **The read path had no picture.** The only diagram stopped at the Gateway target, so the main idea was text and a JSON policy | Fixed. A diagram: tools Lambda, `AssumeRole` with a session policy, the visa, Memory |
+| R3 | Medium | **The rules were spread across the post.** A reader could not see the design rules in one place | Fixed. New section, "The Rules It Follows": eight rules |
+| R4 | Medium | **"IAM holds this line too" for published facts was stated as proven.** Only the allowed case is proven | Fixed. The post says the refusal has a script that has not been run (P6) |
+| R5 | Low | **The opening said AgentCore ships Cedar and Cognito claims as the "keep people out" half**, and the post later shows Cedar cannot see those claims here | Fixed. It now says AgentCore ships the parts |
+| R6 | Medium | **The visa role can read every namespace; the narrowing is the caller's session policy.** A caller that assumed the role with no session policy would get wide credentials. The tools Lambda is therefore still trusted | Said in the post in general terms ("our code still decides"). **Not fixed in the design.** A way to close it: put a permissions boundary or an explicit deny on reads that lack the grant tag. Not tried |
+
+**Facts**
+
+| # | Severity | Finding | State |
+|---|---|---|---|
+| R7 | Medium | **Jordan's `whoami` transcript is older than the namespace fix.** It shows `org_robotinc_user_jordan@contractor.example` and no published namespace | Fixed by saying when it was captured and what differs today. Replace it with a new capture when you next run it |
+| R8 | Low | **"shared by default stays isolated by default"** did not mean anything | Fixed |
+| R9 | Medium | **The AWS Security Blog claim is still not checked** ("three days before", "the exact same primitive") | **Open, Jake.** I cannot read that page |
+| R10 | Low | The new sections show shortened run records, not raw JSON | **Open, Jake**, at the next live run |
+
+**Ease of use**
+
+| # | Severity | Finding | State |
+|---|---|---|---|
+| R11 | High | **The Quickstart could not work for a new reader.** The stack names the agent's image by a digest that exists only in the author's registry, and no step built or pushed an image. Docker and `cdk bootstrap` were not mentioned, and the tools Lambda now needs Docker to bundle | Fixed. The stack takes `-c orchestratorImageDigest=`, and the Quickstart builds and pushes the image first. README too |
+| R12 | Medium | **The offline command ran 6 tests, and the text said 113.** It also installed the CDK to run tests | Fixed: a venv, `pip install pytest boto3`, `make eval`. I ran it from a clean copy: 113 passed |
+| R13 | High | **The Quickstart stopped at `tools/list`.** A reader could not run a grant, publish a fact or see the proof | Fixed. Seven steps with the `token` and `call` helpers from the stage 2 runbook: the visa end to end, a published fact, one wide search, the AWS proof, teardown. I checked the shell syntax in bash and zsh. **Steps 1, 2, 5 and 6 as written have not been run from a clean account** |
+| R14 | Low | Production limits were partial | Fixed: table scans, owners in code, a Cognito call for each tool call, the search time |
+
 ### What now
 
 The agent is built, deployed, and proven as far as it can be without a model it's allowed
@@ -59,6 +93,7 @@ not need one.
 | 8 | Claude | ~~Deploy the fix for Q4 (a person's own namespace) and run the check~~ **Done, deployed and proven live** | "N7: one search across what you may read" |
 | 8a | Jake | Stop GitHub serving the old commits that hold the account and policy IDs: ask GitHub Support to remove them, or delete the repository and push it again. Then delete `/tmp/memory-visa-before-scrub.bundle` on the first machine | U9 |
 | 8b | Jake | Run the proof that IAM refuses a direct record write outside a published namespace (P6): `cdk deploy MemoryVisaAgentCore -c visaDemoPrincipalArn=<your role ARN>`, then `python3 demo/publish_boundary_demo.py`. Expected: line 1 ALLOWED, lines 2 and 3 `REFUSED by AWS: AccessDeniedException`. The deploy adds one demo-only role (`memory-visa-publisher-demo`) with the tools Lambda's publish statement and nothing else. Not proven: that `delete_memory_record` clean-up works | `demo/publish_boundary_demo.py` |
+| 8c | Jake | Blog: open the AWS Security Blog post in a browser and check the two claims about it (R9). At the next live run, capture raw JSON for the new sections and a new `whoami` for Jordan (R7, R10). Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
