@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Visas, Not Keys: Sharing AI Agent Memory Across Teams on Bedrock AgentCore</title>
+<title>Cross-Domain Access Grants on Bedrock AgentCore</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -429,9 +429,9 @@
     <div class="content">
 
     <header class="hero">
-      <h1>Visas, Not Keys</h1>
-      <p class="hero-sub">How teams share what their AI agents know, without handing over the building</p>
-      <p class="hero-tagline">A key opens a door for good. A visa lets one named person through, for a stated reason, until a stated time. The person holds it, their agent travels on it, and the border guard is AWS.</p>
+      <h1>Cross-Domain Access Grants on Bedrock AgentCore</h1>
+      <p class="hero-sub">Building memory-visa: human-approved, time-boxed, and enforced by AWS</p>
+      <p class="hero-tagline">Isolation is the easy half. Most days, Engineering's agent has no business reading Legal's files, and neither should read Finance's. When a real deadline requires a crossing, a visa lets one named person through, for a stated reason, until a fixed timestamp - and AWS refuses the next read once the window closes.</p>
     </header>
 
     <div class="badges">
@@ -686,7 +686,7 @@
 
     <h2 id="published-facts">Publish Once, Read Everywhere</h2>
 
-    <p>The visa works, and it is the wrong tool for a fact that half the company needs. If Engineering asks Legal for the X-7 classification every week, the answer is not fifty-two approvals. Legal should say it once, in public.</p>
+    <p>The visa works, and it is the wrong tool for a fact that half the company needs. If Engineering asks Legal for the X-7 classification every week, the answer is not fifty-two approvals. Legal should publish it once for the whole org.</p>
 
     <p><code>publish_fact</code> does that. The owner of a domain publishes one fact for it into the org's published namespace, <code>org_robotinc_published</code>. Three things make it different from an ordinary memory write:</p>
 
@@ -895,7 +895,7 @@ grant_activity as Priya (neither):
 
     <h2 id="what-a-caller-gets">What a Caller Actually Gets</h2>
 
-    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active (captured on 21 November; today the answer also names the org's published namespace, and a person's own namespace is written <code>org_robotinc_user_jordan_at_contractor_dot_example</code>, because AgentCore does not accept <code>@</code> or <code>.</code> in a namespace):</p>
+    <p>A reader should not have to take this post's word for what a grant unlocks. <code>whoami</code> reports a caller's own effective access. Called with Jordan's grant still active:</p>
 
     <div class="terminal">
       <div class="titlebar">
@@ -988,7 +988,7 @@ DIGEST=$(aws ecr describe-images --repository-name memory-visa-orchestrator --im
 
     <p>2. Deploy. This is three stacks: network, Guardrail, and AgentCore (Cognito, Gateway, policy engine, Lambdas, DynamoDB, Memory, Runtime).</p>
 
-    <pre><code>cd cdk &amp;&amp; pip install -r requirements.txt
+    <pre><code>cd cdk &amp;&amp; ../.venv/bin/pip install -r requirements.txt
 npx cdk deploy --all --require-approval never -c orchestratorImageDigest=$DIGEST
 cd ..</code></pre>
 
@@ -1035,7 +1035,7 @@ call "$MAYA" memory_search '{"query":"X-7 classification"}'      # no namespace,
 
     <p>6. The proof that AWS enforces the visa. It needs your own role in the visa role's trust policy, so deploy once more with <code>-c visaDemoPrincipalArn=&lt;your role ARN&gt;</code>, then:</p>
 
-    <pre><code>pip install boto3
+    <pre><code>source .venv/bin/activate &amp;&amp; pip install boto3
 python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60</code></pre>
 
     <p>7. Stop the billing when you are done: <code>cd cdk &amp;&amp; npx cdk destroy --all</code>.</p>
