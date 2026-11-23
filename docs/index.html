@@ -377,7 +377,7 @@
     <a href="#why-share-memory">Why share memory</a>
     <a href="#the-problem">The problem</a>
     <a href="#terms">How a call travels</a>
-    <a href="#five-ways">Five ways to share</a>
+    <a href="#five-ways">Three ways to share</a>
     <a href="#lifecycle">The lifecycle</a>
     <a href="#what-a-grant-unlocks">What a grant unlocks</a>
     <a href="#maya-gets-her-fact">Maya gets her fact</a>
@@ -406,7 +406,7 @@
         <a href="#why-share-memory">Why share memory</a>
         <a href="#the-problem">The problem</a>
         <a href="#terms">How a call travels</a>
-    <a href="#five-ways">Five ways to share</a>
+    <a href="#five-ways">Three ways to share</a>
         <a href="#lifecycle">The lifecycle</a>
         <a href="#what-a-grant-unlocks">What a grant unlocks</a>
         <a href="#maya-gets-her-fact">Maya gets her fact</a>
@@ -529,22 +529,20 @@
 
     <p>The interceptor is the step everything else leans on: by the time a tool runs, it knows who is calling, and the caller had no say in it.</p>
 
-    <h2 id="five-ways">Five Ways to Share, and Which One Needs a Human</h2>
+    <h2 id="five-ways">Three Ways to Share. Only One Needs a Human.</h2>
 
-    <p>"Share memory across teams" sounds like one problem. It isn't. Ask a person to approve every read and nothing scales; let everyone read everything and you're back at the failure described above. It helps to pull the patterns apart, because each one has a different owner and a different cost:</p>
+    <p>Most sharing shouldn't involve asking anyone. That's the idea the rest of this post hangs on. When Maya goes looking for a fact, one of three things is true about it, and each has a different answer:</p>
 
     <table>
-    <thead><tr><th>Pattern</th><th>Who can read</th><th>Who decides</th></tr></thead>
-    <tr><td><strong>Scoped by default</strong></td><td>You, in your own namespace</td><td>Nobody. It is the default</td></tr>
-    <tr><td><strong>Shared by design</strong></td><td>Your team, in the department's namespace</td><td>Whoever put you in the team</td></tr>
-    <tr><td><strong>Published facts</strong></td><td>Everyone in the org</td><td>The domain's owner, once, when publishing</td></tr>
-    <tr><td><strong>Brokered answers</strong></td><td>Nobody reads. The owning team's agent answers the question</td><td>The owning team, through its agent's rules</td></tr>
-    <tr><td><strong>The visa</strong></td><td>One person, one namespace, a short time</td><td>The domain's owner, each time</td></tr>
+    <thead><tr><th>The fact is...</th><th>What happens</th><th>Who has to say yes</th></tr></thead>
+    <tr><td><strong>hers, or her team's</strong></td><td>She just reads it. Her own notes and Engineering's memory are hers by default</td><td>Nobody</td></tr>
+    <tr><td><strong>something Legal wants everyone to know</strong></td><td>Legal publishes it once. Maya, and everyone else in the company, reads it with no request</td><td>Liam, once, when he publishes it</td></tr>
+    <tr><td><strong>Legal's, and not published</strong></td><td>Maya asks for a visa: one namespace, a reason, a short window</td><td>Liam, every time</td></tr>
     </table>
 
-    <p>The first three carry the volume. The visa is the exception path - and it's the one most teams haven't built, which is why most of this post is about it. The real point of the table is the order: if people need a visa every day for the same fact, that fact should have been published.</p>
+    <p>Only the last row puts a human in the loop, and that's deliberate. An approval costs Liam's attention every single time, so it's worth saving for the real exception. Which gives you a rule of thumb: if the same visa keeps getting requested, that fact should have been published.</p>
 
-    <p>This repo builds four of the five. The brokered answer is not built.</p>
+    <p>Most of this post is about the last row, because it's the one most teams haven't built. The middle row gets its own section further down.</p>
 
     <h2 id="lifecycle">The Lifecycle</h2>
 
