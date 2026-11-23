@@ -910,7 +910,8 @@ grant_activity as Priya (neither):
         "org": "robotinc",
         "department": null,
         "memory": {
-          "static_namespaces": ["org_robotinc_user_jordan@contractor.example"],
+          "static_namespaces": ["org_robotinc_user_jordan_at_contractor_dot_example"],
+          "published_namespace": "org_robotinc_published",
           "granted_namespaces": [
             {"namespace": "org_robotinc_dept_engineering", "expires_at": "2026-11-21T23:29:01+00:00"}
           ]
@@ -936,7 +937,7 @@ grant_activity as Priya (neither):
         "email": "jordan@contractor.example",
         "org": "robotinc",
         "department": null,
-        "memory": {"static_namespaces": ["org_robotinc_user_jordan@contractor.example"], "granted_namespaces": []},
+        "memory": {"static_namespaces": ["org_robotinc_user_jordan_at_contractor_dot_example"], "published_namespace": "org_robotinc_published", "granted_namespaces": []},
         <span class="err">"domain_tools": [],</span>
         "live_gateway_tools": {
           "EngineeringTools___check_shipping_classification": "callable by anyone right now - its gating policy is LOG_ONLY, not ACTIVE, and would deny everyone (not just other departments) if promoted, since the department tag it checks is never visible to Cedar on this auth path"
