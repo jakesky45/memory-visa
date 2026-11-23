@@ -106,6 +106,25 @@ Three things in the blog changes that came with it:
 | Y3 | Low | "IAM decides how long a crossing lasts" left out the namespace | Fixed |
 | Y4 | Low | The cost of the Essentials plan was not looked up | **Open, Jake**, if this stays deployed |
 
+**Y2 in plain words: what "contradiction" means.** `whoami` gives Jordan two answers about
+one tool, and he cannot act on both.
+
+| Field in Jordan's `whoami` | What it says | Where it comes from |
+|---|---|---|
+| `domain_tools` | "Your grant gives you `check_shipping_classification`" | The project's own tool model: a table in the code of each department's tools. A grant that asks for tools carries them. This model knows about grants |
+| `live_gateway_tools` | "The Gateway will refuse you `check_shipping_classification`" | The real Gateway. A Cedar policy guards that one tool and checks one thing: is the department in the caller's token "engineering"? It knows nothing about grants. Jordan's token has no department |
+
+Both statements are true. The two rule sets were never joined, so the grant gives Jordan a
+tool on paper and the Gateway does not let him use it. Each part does what it was written
+to do, so this is a gap in the design and not a bug in the code. Nobody could see it before
+23 November 2026, because the gate was off and everyone could call the tool.
+
+| Option | What it means | State |
+|---|---|---|
+| Say it | `whoami` tells the caller "a grant does not change this" in the same answer that lists the tool | **Done** (`e6a12f6`), not deployed |
+| Remove the promise | Stop listing the one real Gateway tool among the tools a grant carries. A grant then only promises the demonstration tools, and nothing it promises is refused. Small: one line in `src/agents/domain_config.py`, and the tests and the blog table that name the tool | **Open, Jake.** The simplest way to have no loose end |
+| Join them | The Cedar policy learns about grants, so a grant with tools opens the real tool | Not planned. It is the Dogwood question: a policy sees one caller's session, so the grant would have to reach it through a tool call |
+
 ### Tenth review: the whole blog, read end to end
 
 23 November 2026, at `ba07194`. About 6,800 words in 22 sections. Each finding is fixed
@@ -385,6 +404,7 @@ not need one.
 | 8e | Jake | Once, from a clean account or after a destroy, run the Quickstart as written (R13) | "Sixth review" |
 | 8f | Claude | ~~Deploy N10 and run its five checks, then deploy again with `-c departmentGate=active`~~ **Done, 23 November 2026: the gate is active and proven** | "N10: the department gate" |
 | 8g | Jake | `whoami`: deploy (`cdk deploy MemoryVisaAgentCore -c departmentGate=active`; only the tools Lambda changes), then capture Jordan again: request with `include_tools`, Maya approves, `whoami`, wait for the window, `whoami`. Paste both answers over the two transcripts in "What a Caller Actually Gets" and put the `live_gateway_tools` field back. Expected for Jordan: `domain_tools` lists the three Engineering tools while the grant is open, and `live_gateway_tools` says "refused for you ... your department is not set. A grant does not change this" both times. Also run `eng "$JORDAN"` once: expected refused | "Review of the N10 run", Y1 and Y2 |
+| 8h | Jake | Decide Y2: keep the grant's promise of `check_shipping_classification` and let `whoami` explain the refusal (as now), or remove that tool from what a grant carries | "Y2 in plain words" |
 | 9 | Both | When a model works on Bedrock: run all four beats live, time them, then the blog and the talk (stage 4) | "The demo, in four beats" |
 
 ### Fourth review: the stage 3 run
