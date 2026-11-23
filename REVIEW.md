@@ -1,0 +1,543 @@
+# memory-visa: review and recommendations
+
+Reviewed 23 November 2026, at commit `49f59ba`. Scope: the code under `src/`, `cdk/` and `tests/`,
+the README, and the blog at `docs/index.html`. The focus is the memory layer and the aim of
+presenting "sharing context at scale" at an AWS Summit.
+
+How I checked: I read every source file, ran `make eval` (6 pass), and ran six probes against
+the in-memory store to confirm the grant findings below. I did not deploy the stack, so
+everything about the live system comes from the code, the README and the blog.
+
+## Progress and action points
+
+Updated 23 November 2026, at commit `451beca` on `main`. This section is the working list.
+The findings below it are the review as first written, at commit `49f59ba`.
+
+### Done since the review
+
+| Finding | What changed | Commit | How it was checked |
+|---|---|---|---|
+| M2 | Memory is read with a visa: AWS credentials that allow one namespace until the grant ends. The orchestrator's own role can no longer read memory | `a280bd5` | 11 offline tests. **Not deployed. Not proved against AWS** |
+| M3 (write) | A grant reads and never writes. Only a member writes into a namespace | `451beca` | Offline test |
+| G2 | A grant is decided once. An expired, denied or revoked grant cannot be approved; approving twice does not move the window; a closed window cannot be revoked | `451beca` | Offline tests on the in-memory store |
+| G2 (race) | The DynamoDB store writes a decision only if the status is still what it read | `451beca` | **Syntax only.** No test covers the DynamoDB store |
+| G2 (limits) | A request needs a reason, and a window of at most 24 hours | `451beca` | Offline tests |
+| G4 | The requester's org comes from the verified token. `requester_org` is removed from the tool's schema | `451beca` | **Syntax only.** No test covers the tools Lambda |
+
+`make eval` now runs 25 tests: the 6 properties, 11 for the visa, 8 for the grant rules.
+
+### Your action points: deploy and prove the visa
+
+These need your AWS access. Run them from the environment you deploy from.
+
+| # | Action | Command or detail | Expected result |
+|---|---|---|---|
+| A1 | Pull | `git pull` | `main` at `451beca` or later |
+| A2 | Check the infrastructure change | `cd cdk && source .venv/bin/activate && cdk diff MemoryVisaAgentCore` | A new role `memory-visa-reader`. The runtime role loses `RetrieveMemoryRecords` and may assume the new role. Two new runtime environment variables. Three new parameters. `requester_org` leaves the `request_access` schema. Stop if you see anything else |
+| A3 | Find your role ARN | `aws sts get-caller-identity --query Arn --output text` | If it is an `assumed-role` ARN, use the IAM role behind it: `arn:aws:iam::<account>:role/<name>` |
+| A4 | Deploy, with your role allowed to run the proof | `cdk deploy MemoryVisaAgentCore -c visaDemoPrincipalArn=<ARN from A3>` | The stack updates |
+| A5 | Rebuild and push the orchestrator image | As before. `server.py` changed, and the stack names the image by digest, so update the digest | The runtime uses the new image |
+| A6 | Make sure Legal has a fact to read | Write it through the orchestrator if the old one has expired. Wait a minute for extraction | A retrieve as Liam returns it |
+| A7 | Run the proof | `python3 demo/visa_credentials_demo.py --namespace org_robotinc_dept_legal --other org_robotinc_dept_finance --seconds 60` | Line 1 `ALLOWED`. Lines 2 and 3 `REFUSED by AWS: AccessDeniedException` |
+| A8 | Send me the three lines | Paste the output | See the next table if it differs |
+| A9 | Retest a client that calls `request_access` | It no longer needs `requester_org`. A client that still sends it is not broken; the value is ignored | A request is created under your verified org |
+
+If the proof does not match:
+
+| What you see | Likely cause | What to do |
+|---|---|---|
+| Line 1 refused | AgentCore gives IAM the namespace in a form the policy does not list. The names are flat strings today; AgentCore stores them with a leading and trailing slash | Send me the output. It is a one-line fix in `namespace_condition_values` |
+| Line 2 allowed | The namespace condition is not applied to this call | Stop and send me the output. The design needs a different condition key, and nothing else should be built on it until this is known |
+| An error when the visa is minted | Your role is not in the visa role's trust policy | Check A3 and A4 |
+| The orchestrator's retrieve fails after the deploy | The runtime still runs the old image, which reads with its own role | Do A5 |
+
+### Your decisions
+
+| # | Decision | Why it is yours | My recommendation |
+|---|---|---|---|
+| D1 | Does a grant still carry the domain's tools? | The blog calls it "a full visa" on purpose. The grant is now read-only for memory, but `allowed_tools` still returns the owner's tools, including the write tool `log_compliance_note` | Take tools out of the grant by default. Offer them as a named scope the approver sees |
+| D2 | Is 24 hours the right longest window? | It is a constant, `MAX_GRANT_DURATION`. I chose it | Keep it, or set it for each domain |
+| D3 | Does `REVIEW.md` go into the public repository? | It is untracked. The repository is public and the review is candid | Keep it out, or publish a shorter "known limits" page |
+| D4 | The thesis of the talk and the next post (B1) | It decides what is built next | "Isolated by default, shareable on purpose": five patterns, with the visa as the exception path |
+| D5 | The tone toward AgentCore (B5) | It is your voice on an AWS stage | Present it as the layer you add on top, not as where the platform stops |
+| D6 | Verify three facts before they are said on stage (B4) | I could not confirm them | The name "Dogwood"; the AWS security blog and its date; the AgentCore and Bedrock Agents dates |
+
+### Next to build
+
+In this order. Each is one change with its own tests.
+
+| # | Work | Finding | Depends on | Why this order |
+|---|---|---|---|---|
+| N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. Remove the `claims` body and the body-driven approvals from `server.py` | M1 | A7 passing | The visa is only as good as the identity it is issued to. Today that identity can still be typed into a request |
+| N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the grant ID | M4, M10 | N1 | The author must be the verified one |
+| N3 | Apply the guardrail on write, or remove the claim | M6 | N1 | A live claim that is false today |
+| N4 | Tests for the DynamoDB store and the tools Lambda | Tests | None | Two of today's fixes are checked by syntax only |
+| N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | N4 | Change the hot path with tests under it |
+| N6 | An agent that calls a model and uses memory in a conversation | Scale | N1 | Demo beats 1 and 2 need it. Nothing in the repository calls a model |
+| N7 | Search across every namespace the caller may read | M7 | N2 | The function that makes shared memory useful |
+| N8 | One more sharing pattern: a published fact, or a brokered answer | Scale | N2, N7 | The talk needs more than one way to share |
+| N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | A7 | Removes the one-minute wait and the rewording. Also removes the two-form namespace condition |
+| N10 | Claims in the access token; the Cedar `forbid` made active | C1 | None | Makes "built on Cedar" true, and removes a Cognito call from every request |
+
+### The blog
+
+Nothing in the blog has changed. Two of today's changes make it more wrong until it is
+updated, and they are yours to rewrite or to hand to me:
+
+| Blog says | Now |
+|---|---|
+| "a grant into a domain carries that domain's whole toolset alongside its Memory namespace" | Still true for tools (D1). For memory, the grant now reads only |
+| The `request_access` transcripts and the Quickstart | Still correct. `requester_org` was never shown in them |
+| Nothing about AWS enforcing the boundary | The strongest new point. Add it once A7 passes: "the boundary and the expiry are enforced by IAM, not by our code" |
+
+The table of claims in B3 still stands, except that "the door closes behind them" is nearer
+the truth: a read after the window is refused by AWS as well as by the code.
+
+### The demo, in four beats
+
+| Beat | What the audience sees | Ready? |
+|---|---|---|
+| 1. Short-term memory | Maya asks two questions in one conversation; the agent follows the thread | No. Needs N6 |
+| 2. Long-term memory | A new conversation; the agent still knows what it learned | No. Needs N6 |
+| 3. Shared, and refused | Legal records a fact; Engineering's read is refused by AWS | After A7 |
+| 4. The visa | Liam approves; the same call works; the window closes; AWS refuses again. The policy is on screen | After A7. Stronger after N1 |
+
+Short-term memory is the transcript: events, for one person in one conversation, available
+at once, kept 7 days here. Long-term memory is what was learned: records that a model
+extracts from the transcript, stored under a namespace, found by meaning, kept 31 days here.
+Shared context is long-term memory.
+
+## Verdict
+
+The grant workflow is a good idea with a clear story, and the write-up is honest. But the
+project is an access-control demo with a thin memory layer attached. It does not yet show
+context being shared, and it does not show scale.
+
+Three things would stop me presenting it as it is:
+
+1. **The memory path is the least protected path in the system.** The headline feature can be
+   bypassed by anyone who holds a Gateway token.
+2. **"Memory" is a namespace check in front of two API calls.** There is no agent that uses
+   the memory, no provenance on what comes back, and no way to share one fact without opening
+   a whole department.
+3. **The blog claims more than the code does** ("built on Cedar", "credential scrubbing",
+   "six properties proven"), and a Summit audience will include people who can tell.
+
+All three are fixable. The plan at the end puts them in order.
+
+## What is strong
+
+Keep these. They are the parts a talk can stand on.
+
+- **The two-person approval as MCP tools.** The owner approves from the AI client they already
+  use. No approval UI. This is the most original part.
+- **Identity from the verified token, never from arguments** (`identity_interceptor.py`). The
+  overwrite-never-merge rule is right, and the adversarial transcripts prove it.
+- **The Dogwood analysis.** Explaining why a single-caller session history cannot hold a
+  two-person approval is a real insight.
+- **The contractor case.** A narrower default through the same mechanism, with no special code.
+- **The honesty.** The blog names its own gaps. Keep that, but move it (see the blog section).
+- **`whoami`.** Showing effective access before and after expiry is the best demo moment.
+
+## The memory layer
+
+This is where the project is weakest. Findings are in order of importance.
+
+### M1. The memory path trusts the request body for identity
+
+`src/server.py:61-68` builds `UserClaims` from `payload["claims"]`. The orchestrator never
+reads the verified token. So a caller can send any `email`, `org` and `departments` and read
+or write any namespace. The shared client-credentials token is accepted on this target.
+
+The same file is worse for approvals: `approve_access`, `deny_access` and `list_pending`
+(`server.py:100-110`) take `approver_email` and `owner_email` from the body. So the hole that
+`IdentityInterceptor` closes for the MCP tools is still open on the orchestrator: anyone can
+approve a grant as Liam through Tier One.
+
+The blog and the README both admit the first half. Neither mentions the approval half. For a
+project whose subject is "who may read this memory", this is the first fix.
+
+**Recommendation:** make `memory_search` and `memory_write` real MCP tools on the Gateway,
+behind the interceptor, using `_verified_email`, `_verified_org` and `_verified_department`.
+Then delete the `claims` body and the three approval actions from `server.py`. Tier One has
+no reason to exist after that.
+
+### M2. Enforcement is one Python `if`, and the platform does not back it
+
+`GuardedMemory._check` (`guarded_memory.py:72-77`) is the only control. The runtime role has
+`CreateEvent` and `RetrieveMemoryRecords` on the whole Memory resource
+(`agentcore_stack.py:730`). Any other code that runs with that role, or any second agent
+added later, reads everything.
+
+AgentCore can enforce this itself. The IAM reference lists `bedrock-agentcore:namespace` as a
+condition key on `RetrieveMemoryRecords` and `BatchCreateMemoryRecords`, and the developer
+guide shows exact and prefix matches on namespaces.
+
+**Recommendation, and the strongest idea for the talk:** when a grant is approved, mint
+short-lived credentials (STS `AssumeRole` with a session policy) that allow reads on exactly
+that namespace for exactly the grant's duration. The visa then is a real credential. AWS
+enforces the boundary and the expiry, and the Python check becomes a second layer, not the
+only one. Check one caveat first: the docs say caller-scoped IAM conditions do not apply in
+the Gateway's `GATEWAY_IAM_ROLE` mode, so this fits a Lambda or Runtime that calls Memory
+directly.
+
+### M3. A grant is a whole department, read and write, for the full window
+
+Maya needs one fact. The grant gives her everything in `org_robotinc_dept_legal`, the right
+to write into it, and Legal's tools including `log_compliance_note`.
+
+Probe result: with an approved grant, a visitor wrote "Supplier X is cleared for export" into
+Legal's namespace, and held Legal's write tool. `GuardedMemory.put`
+(`guarded_memory.py:79-82`) uses the same check as `retrieve`. The docstring in `grants.py`
+says "temporary read access"; the code does not.
+
+This is memory poisoning by design: the next Legal agent reads the visitor's text as Legal's
+own knowledge. AWS has a security blog on exactly this risk (see Sources).
+
+**Recommendation:**
+- Add a `scope` to `Grant`: `read` by default; `write` only on request, and shown to the
+  approver.
+- Take tools out of the grant by default. "A full visa" is simple, but it is not least
+  privilege, and that is the first question a security audience asks.
+- Longer term, share less than a namespace (see "Sharing context at scale").
+
+### M4. What comes back has no provenance
+
+`AgentCoreMemoryBackend.retrieve` (`agentcore_backend.py:29-35`) returns `{"text": ...}` and
+nothing else. No record ID, no namespace, no author, no time, no score.
+
+For shared memory this matters more than anything. When Engineering's agent reads a Legal
+fact, it must be able to say who asserted it, when, and whether it is still current. In the
+blog's own example the retrieve returns two facts about 7A994 with no way to tell which is
+newer or who wrote either.
+
+**Recommendation:** return `memoryRecordId`, `namespace`, `createdAt` and the score. On
+write, attach metadata: the verified author, the source, a classification label, and a
+`valid_until` or `supersedes` field. Show provenance in the demo output.
+
+### M5. LLM-extracted semantic memory is the wrong store for authoritative facts
+
+Writes go in as a `USER` conversational event (`agentcore_backend.py:21-26`). A background
+model then extracts "facts". That is lossy and delayed: about a minute in the blog, and the
+extracted text is the model's rewording. For an export-control classification, the store
+must return what Legal wrote.
+
+Related problems:
+- **No correction and no delete.** The blog's "staleness" section admits this. A wrong fact
+  stays for 31 days. There is no supersede and no erase.
+- **The organisation forgets in a month.** `record_expiry_duration_days=31` and
+  `event_expiry_duration=7` (`agentcore_stack.py:675-683`). The comment says 31 is the
+  minimum. For shared organisational knowledge, the minimum is the wrong choice.
+- **`actorId` is used as the namespace** (`agentcore_backend.py:23`). Every member of a
+  department writes as one actor. AgentCore then cannot tell Liam from another lawyer.
+
+**Recommendation:** split the two kinds of memory and say so in the talk.
+- *Conversational memory:* per user and per session, extracted by AgentCore. Keep as is.
+- *Shared facts:* written directly as long-term records (`BatchCreateMemoryRecords`), with
+  the real `actorId`, metadata, and an explicit update and delete path. No extraction step,
+  so no delay and no rewording.
+
+### M6. The secret scrubbing is not applied in the live system
+
+`server.py:43`: `_apply_guardrail = lambda text: text`. The comment says the Guardrail
+attaches at model invocation, but the orchestrator never invokes a model. So in the deployed
+stack a pasted access key is stored as written.
+
+`test_eval3` passes because it tests `tests/fakes.py`, which has its own regex. The README
+lists "credential scrubbing" as proven and the Guardrail as live. Both are true only offline.
+
+**Recommendation:** call `ApplyGuardrail` in the write path, or remove the claim. Add one
+live integration test for it.
+
+### M7. A caller must name the namespace
+
+`retrieve` takes one namespace. An agent that wants "everything I may see about the X-7
+battery" must know every namespace name and query each one.
+
+**Recommendation:** add a search across all allowed namespaces: compute the allowed set from
+claims and grants, query each, merge and rank, and return provenance with each result. This
+is the function that makes shared memory useful, and it is the natural demo for "sharing
+context".
+
+### M8. Namespaces are flat strings joined with underscores
+
+`org_{org}_dept_{dept}` is built by string formatting and parsed with `split("_", 3)`
+(`access_requests.py:53`, `domain_config.py:37`). There is no validation, so an org or
+department that contains an underscore breaks the parse. Email addresses are part of
+namespace names.
+
+**Recommendation:** use hierarchical paths, `/org/{org}/dept/{dept}/...`, which AgentCore
+supports and which allow prefix conditions in IAM. Build and parse them in one small typed
+module. AWS published a namespace design guide for AgentCore Memory in this style (see
+Sources); align with it and cite it.
+
+### M9. Access is time-boxed; knowledge is not
+
+After the window closes, the fact is still in Maya's conversation, and her own agent may have
+extracted it into her user namespace. The visa bounds new reads only.
+
+That is acceptable, but the blog says "without leaving the door open behind them", which
+reads as a stronger claim. Say what the control does: it limits and audits new reads.
+Optionally tag anything derived from a granted read with its source and grant ID.
+
+### M10. Reads are not in the audit trail
+
+The grant audit table records request, approval and expiry. It does not record what was read
+under the grant. Reads go to stdout (`server.py:47-58`), with identity taken from the
+unverified body. So the audit of the thing that matters most can be forged.
+
+**Recommendation:** write a `read` event to the audit table with the verified identity, the
+namespace, the query and the `grant_id` that authorised it.
+
+## Sharing context at scale
+
+The current model has one way to share: open a whole namespace for a while. A talk on
+sharing context at scale needs more than that. A design that would carry the title:
+
+| Pattern | When | In the repo today |
+|---|---|---|
+| **Scoped by default** | Each user, department and project has its own namespace | Yes |
+| **Shared by design** | A project namespace that several departments read and write | Yes (`test_eval2`), but the blog barely mentions it. This is the common case and it deserves a section |
+| **Published facts** | A department marks a fact as readable by the org, with an owner and an expiry | No. This is how most context should be shared: Legal publishes the classification once, and nobody needs a grant |
+| **Brokered answer** | The requester asks a question; the owner's side answers it; the answer is copied to the requester with provenance | No. "Share the answer, not the access" is the least-privilege form of the Maya story |
+| **Visa** | A real exception: time-boxed access to a namespace, approved by the owner | Yes. Keep it as the exception path, not the main path |
+
+Position the visa as the last of five patterns, not the only one. That changes the story from
+"we built an approval flow" to "here is how an organisation shares agent memory, and here is
+how the exceptions work".
+
+To show scale, the talk needs evidence the repo cannot produce today:
+
+- **An agent in the loop.** Nothing here calls a model. Show one agent answering a question
+  better because it read another team's published fact.
+- **Numbers.** Namespaces, records, grants per day, retrieve latency at p50 and p95, cost per
+  thousand operations. Even small measured numbers beat none.
+- **The hot path at size.** `active_grants_for` scans the whole grants table on every memory
+  read (see G1). Fix it, then measure it with 10,000 grants.
+- **Many clients.** The bring-your-own-client point is good. Show two different MCP clients in
+  the demo.
+
+## Grant store and tools
+
+### G1. Every memory read scans the whole grants table
+
+`DynamoGrantStore.active_grants_for` and `pending` call `scan()` with no pagination
+(`grants_dynamodb.py:114-119`). Cost and latency grow with every grant ever made. Past 1 MB
+of items, a scan returns one page, so active grants are missed and access is wrongly denied.
+
+**Recommendation:** add a GSI on `requester_namespace` and one on the target domain with
+status. Use `Query`. Store `expires_at` as an attribute.
+
+### G2. The state machine has no guards
+
+Confirmed with probes on the in-memory store; `grants_dynamodb.py:78-101` has the same logic.
+
+- An **expired** grant can be approved again. The window reopens with no new request and no
+  new reason.
+- A **denied** grant can be approved afterwards.
+- A **ten-year** duration with an **empty** reason is accepted.
+- Approve, deny and revoke are read-then-write with no condition, so two calls can race.
+- The grant write and the audit write are two separate calls. One can succeed without the other.
+
+**Recommendation:** allow only `pending → approved | denied` and `approved → revoked |
+expired`. Enforce it with a `ConditionExpression` on status. Write the grant and its audit
+event in one `TransactWriteItems`. Cap the duration, per domain. Require a reason.
+
+### G3. Expiry is noticed, not enforced
+
+A grant becomes `expired` only when someone next checks it (`grants.py:104-119`). So:
+
+- The audit time is when it was noticed, not when it ended.
+- A grant nobody checks again stays `approved` in the table for ever. An auditor who reads
+  the table sees an active grant.
+- A read path writes to the table, so every reader needs write permission on it.
+
+**Recommendation:** store `expires_at` at approval and compare against it. Emit the expiry
+event at the right time with EventBridge Scheduler. Add a DynamoDB TTL for clean-up. With
+the credential idea in M2, the expiry is also enforced by AWS.
+
+### G4. The requester's org comes from the caller
+
+`access_request_tools.py:98` uses `args["requester_org"]`, although the interceptor provides
+`_verified_org`. Probe result: a caller's namespace becomes
+`org_helios-biotech_user_maya@robotinc.example`. Use the verified org.
+
+### G5. Owners and tools are constants in code
+
+`DOMAIN_OWNERS` has one person per domain. There is no deputy and no delegation, and nothing
+happens when an owner leaves. At scale, owners must come from the identity provider (a group
+per domain) or a table. `DOMAIN_TOOLS` lists eight tools; one exists, as a stub.
+
+### G6. `GetUser` on every tool call
+
+The interceptor calls Cognito for every request. That adds latency and a Cognito rate limit
+to the hot path. See C1 for the fix.
+
+## Cedar and identity
+
+### C1. Cedar does no real work today
+
+The only active policy permits every listed action to every OAuth user
+(`agentcore_stack.py:93-108`). The one `forbid` is `LOG_ONLY` and cannot work, because Cognito
+access tokens carry no custom attributes. All real authorisation is Python.
+
+The blog's hero line says "built on Cedar", and the body says `GrantStore` is "backing
+ordinary Cedar ABAC". Neither is accurate: the grant store is not connected to Cedar at all.
+
+**Recommendation, in two steps:**
+
+1. **Put the claims in the access token.** A Cognito pre token generation trigger (event
+   version 2) can add claims to access tokens. It needs the Essentials or Plus plan. Then
+   `hasTag("department")` works, the `forbid` can go `ACTIVE`, and the per-call `GetUser`
+   (G6) is no longer needed for org and department.
+2. **Consider Amazon Verified Permissions for the grants.** A grant maps naturally to a
+   Cedar policy: permit this principal, this action, this namespace, until this time. Create
+   it on approval; delete it on revoke. Then "built on Cedar" is true, the decision is one
+   `IsAuthorized` call, and the audit is in CloudTrail. I have not verified the time
+   condition against the current Cedar and Verified Permissions documentation; check that
+   before you commit to it.
+
+## Tests
+
+- **Only the in-memory path is tested.** There are no tests for `DynamoGrantStore`, the
+  interceptor, the tools Lambda or `server.py`. The code that runs live is the code without
+  tests.
+- **The fake retrieve ignores the query** (`tests/fakes.py:26`). It returns everything in the
+  namespace, so no test covers retrieval.
+- **"Six properties end to end" overstates it.** They are unit tests against fakes. Call them
+  that.
+- **Add negative tests** for G2 (re-approve, approve after deny, duration cap), for M3 (a
+  read grant must not allow a write), and for G4.
+- **Add a small live suite** behind a flag: one round trip through the real Gateway, one
+  guardrail check, one expiry.
+
+## The blog
+
+It is well written and unusually honest. It is not yet the right piece for this aim.
+
+### B1. It argues a different thesis from the talk
+
+The title is "Cross-Domain Access Grants on Bedrock AgentCore". The talk is "sharing context
+at scale". "Why Share Memory At All" is three paragraphs, and the post never returns to it.
+There is no moment where an agent does better work because memory was shared.
+
+**Recommendation:** decide the thesis first. For the Summit: *shared agent memory is only
+useful if it is isolated by default and shareable on purpose; here are the patterns, and here
+is the exception path.* Then restructure around the five patterns above.
+
+### B2. Too much of it is a bug diary
+
+About a third of the 4,600 words is debugging: the `LOG_ONLY` policy, the execution role, the
+namespace template, stdout buffering, the Claude Code OAuth bug. Each is interesting. Together
+they bury the idea, and the reader finishes with a list of things that do not work: the Cedar
+gate is inert, Slack is not wired, the memory path trusts the body, seven of eight tools do
+not exist.
+
+**Recommendation:** move the war stories to a separate "what we learned building on
+AgentCore" post, or a short box near the end. In the main post, fix the gaps or scope them
+out in one "limits" section.
+
+### B3. Claims that do not match the code
+
+| Blog or README says | The code |
+|---|---|
+| "built on Cedar"; "GrantStore backing ordinary Cedar ABAC" | Cedar permits everything. The grant store is not connected to it |
+| "org and department claims ride along as JWT claims, which Cedar reads as tags" | Later in the same post: access tokens carry no custom attributes, so Cedar never sees them |
+| "what a grant opens today is Memory ... nothing more" | Two paragraphs on: a grant carries the whole toolset. And it allows writes |
+| "five tools" (five times) and "six tools" | Six tools. Pick one number |
+| "Credential scrubbing" proven; Guardrail "live" | The live guardrail function returns its input (M6) |
+| "Six properties are proven end-to-end" | Unit tests against fakes |
+| "without leaving the door open behind them" | True for new reads only (M9) |
+
+### B4. Facts to verify before a Summit audience reads them
+
+I could not verify these, and AWS staff will be in the room:
+
+- The name "Dogwood" for the temporal policy feature, and that its history is per principal.
+  The post cites two third-party write-ups; cite the AWS documentation only.
+- That an AWS security blog, published three days before the post, uses the same interceptor
+  pattern. Link it, with its date.
+- "AgentCore only hit general availability in October 2025" and "the original Bedrock Agents
+  service closed to new customers under ten months later".
+
+### B5. Tone for an AWS stage
+
+"Bet on the Pattern, Not the Platform" and "Where It Stops" are fair, but they read as
+criticism of the host. The same point lands better as: *AgentCore gives you the isolation
+primitives; this is the layer you add on top, and it is built from open standards.*
+
+### B6. Smaller points
+
+- The "Anyone can lock a door" paragraph appears twice in the first screen.
+- The phrases "confirmed live", "proof, not the claim" and "reported honestly" repeat. Once
+  each is enough; after that they sound defensive.
+- There is no threat model. A half-page table (who the attacker is, what they hold, what
+  stops them) would replace many of the scattered caveats.
+- There is no comparison with the alternatives: a shared project namespace, copying the fact,
+  or Verified Permissions. A reader will ask "why not just...".
+- The Quickstart is in the post and in the README. Keep it in the README and link to it.
+
+## The Summit talk
+
+A 30-minute shape that uses what is already strong:
+
+1. **The problem (3 min).** Five agents, five islands of memory. Centralise it and everyone
+   sees everything. One slide.
+2. **The model (5 min).** The five sharing patterns. Isolated by default, shared on purpose.
+3. **Demo 1: shared context working (5 min).** Legal publishes a fact. Engineering's agent
+   uses it in an answer, and shows who said it and when.
+4. **Demo 2: the visa (7 min).** Maya is denied, requests, Liam approves from a different MCP
+   client, `whoami` before and after expiry. Then the adversarial calls: approve your own
+   request; approve as another owner.
+5. **How it is built (5 min).** Verified identity at the Gateway, Cedar for the decision,
+   scoped credentials for the enforcement, DynamoDB for the audit.
+6. **At scale (3 min).** Measured numbers, and what changes at 100 domains.
+7. **What we learned (2 min).** Three lessons, not ten.
+
+For the demo: record a fallback video, pre-create the users, and keep the grant window at
+two minutes so the expiry happens on stage.
+
+## Plan
+
+### Before any talk or new post
+
+1. M1: memory read and write as MCP tools with verified identity; remove body claims and the
+   body-driven approvals.
+2. G2 and G4: guard the state machine; use the verified org.
+3. M3: read-only grants by default; tools out of the grant.
+4. M6: apply the guardrail on write, or drop the claim.
+5. B3: correct every claim in the table.
+
+### To earn the title "sharing context at scale"
+
+6. M4 and M10: provenance on results; reads in the audit trail.
+7. M7: search across allowed namespaces.
+8. Published facts and a brokered answer: at least one of the two.
+9. An agent in the loop that uses shared memory in an answer.
+10. G1 and G3: queries in place of scans; real expiry. Then measure.
+
+### To make it a strong AWS-native design
+
+11. C1: claims in the access token; the Cedar `forbid` active.
+12. M2: scoped, short-lived credentials per grant.
+13. M5 and M8: direct long-term records with metadata; hierarchical namespaces.
+14. Verified Permissions for the grants, if the time condition checks out.
+15. Tests for the DynamoDB store, the interceptor and the tools; a small live suite.
+
+## Sources
+
+AWS documentation and blogs found while checking the recommendations:
+
+- [Organizing Agents' memory at scale: Namespace design patterns in AgentCore Memory](https://aws.amazon.com/blogs/machine-learning/organizing-agents-memory-at-scale-namespace-design-patterns-in-agentcore-memory/)
+- [Memory scoping with namespaces (AgentCore developer guide)](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/session-actor-namespace.html)
+- [Specify long-term memory organization with namespaces (AgentCore developer guide)](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/specify-long-term-memory-organization.html)
+- [Actions, resources, and condition keys for Amazon Bedrock AgentCore](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html)
+- [Access AgentCore Memory through a gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory-gateway-connector.html)
+- [Help defend against memory poisoning in Amazon Bedrock AgentCore with multi-layer write validation](https://aws.amazon.com/blogs/security/help-defend-against-memory-poisoning-in-amazon-bedrock-agentcore-with-multi-layer-write-validation/)
+- [Propagate user authorization context in AI agents with Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/security/propagate-user-authorization-context-in-ai-agents-with-amazon-bedrock-agentcore/)
+- [Pre token generation Lambda trigger (Amazon Cognito)](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-lambda-pre-token-generation.html)
+- [How to customize access tokens in Amazon Cognito user pools](https://aws.amazon.com/blogs/security/how-to-customize-access-tokens-in-amazon-cognito-user-pools/)
+
+I read search summaries of these pages, not every page in full. Two details need a check
+against the current documentation before you build on them: the `namespacePath` condition key
+for prefix matching, and which condition keys apply to the delete actions.
