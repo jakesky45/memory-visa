@@ -466,6 +466,8 @@
     <li><strong>AWS holds the line on every read.</strong> Our code decides who gets a visa. The read itself happens with credentials that IAM limits to one namespace until one moment, and when the window closes the refusal comes from AWS.</li>
     </ul>
 
+    <p>New to AgentCore? There's a short <a href="#glossary">glossary</a> at the end.</p>
+
     <h2 id="why-share-memory">Why Share Memory At All</h2>
 
     <p>Once a company has more than a few people working with AI agents, what those agents learn ends up in islands. What Engineering's people taught their agent, Legal's people never see. Finance starts from zero on a question Engineering answered last quarter. Put that memory in one shared, namespaced store and the payoff compounds: anyone's agent can draw on what the company already knows, not just its own slice.</p>
@@ -510,7 +512,7 @@
 
     <h2 id="terms">How a Call Travels</h2>
 
-    <p>Every call takes the same path, whichever tool it's for. (If a term is new, there's a <a href="#glossary">glossary</a> at the end.)</p>
+    <p>Whether it's Maya searching or Liam approving, a request goes through the same four steps before any tool runs:</p>
 
     <div class="sketch col">
       <div class="box wobble-a">AI Client<br><span class="sub">Claude / Cursor / Kiro</span></div>
