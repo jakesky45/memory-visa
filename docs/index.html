@@ -579,7 +579,7 @@
 
     <p><code>allowed_tools()</code> computes this from the same claims and the same grant store as every other check in this post. The tests assert it, and a live <code>whoami</code> call (below) shows Jordan gaining Engineering's three tools when his grant opened and losing them when it closed.</p>
 
-    <p>One honest gap. Robotinc has one real department-scoped tool behind the Gateway, <code>check_shipping_classification</code>, and a Cedar policy was meant to gate it by the caller's department. It cannot. The Gateway validates Cognito access tokens, and access tokens carry no custom attributes, so <code>principal.hasTag("department")</code> is never true. Making the policy active denied everyone, Maya included. It stays in <code>LOG_ONLY</code>, and <code>whoami</code> reports it that way. The fix is to put the claims into the access token. That is written - a small Cognito trigger - and the gate stays in <code>LOG_ONLY</code> until it has been proven live.</p>
+    <p>The gate holds now - it didn't always. Robotinc has one real department-scoped tool behind the Gateway, <code>check_shipping_classification</code>, and a Cedar policy was meant to gate it by the caller's department. For a while it couldn't: the Gateway validates Cognito access tokens, and access tokens carry no custom attributes by default, so <code>principal.hasTag("department")</code> was never true. Making the policy active denied everyone, Maya included. The fix was a small Cognito pre-token-generation trigger that copies the caller's own <code>org</code> and <code>department</code> attributes into their access token, so AgentCore has something to turn into a tag. Deployed and proven live: Maya, engineering, still gets the stub answer; Liam, legal, is refused by the policy engine itself, not by this project's own code. <code>whoami</code> reports which mode it's in.</p>
 
     <h2 id="maya-gets-her-fact">Maya Gets Her Fact</h2>
 
@@ -912,7 +912,7 @@ grant_activity as Priya (neither):
         },
         <span class="ok">"domain_tools": ["check_shipping_classification", "generate_packaging_manifest", "query_firmware_specs"],</span>
         "live_gateway_tools": {
-          "EngineeringTools___check_shipping_classification": "callable by anyone right now - its gating policy is LOG_ONLY, not ACTIVE, and would deny everyone (not just other departments) if promoted, since the department tag it checks is never visible to Cedar on this auth path"
+          "EngineeringTools___check_shipping_classification": "Engineering only - a Cedar policy refuses any caller whose access token has no department claim equal to 'engineering'"
         }
       }</pre>
     </div>
@@ -934,7 +934,7 @@ grant_activity as Priya (neither):
         "memory": {"static_namespaces": ["org_robotinc_user_jordan_at_contractor_dot_example"], "published_namespace": "org_robotinc_published", "granted_namespaces": []},
         <span class="err">"domain_tools": [],</span>
         "live_gateway_tools": {
-          "EngineeringTools___check_shipping_classification": "callable by anyone right now - its gating policy is LOG_ONLY, not ACTIVE, and would deny everyone (not just other departments) if promoted, since the department tag it checks is never visible to Cedar on this auth path"
+          "EngineeringTools___check_shipping_classification": "Engineering only - a Cedar policy refuses any caller whose access token has no department claim equal to 'engineering'"
         }
       }</pre>
     </div>
@@ -965,7 +965,7 @@ grant_activity as Priya (neither):
 
     <p>So Dogwood could sit in front of a crossing as a second gate - "no read unless this caller's grant was checked first". It isn't in this build, for three reasons. The window is fixed in the policy text rather than taken from the grant, so it's less exact than the deadline IAM enforces. It can't see a revocation, because that happens in the owner's session. And the moment a policy engine holds one such policy, every request to the Gateway has to carry a session ID header, or it fails.</p>
 
-    <p>That is why the grant lives in its own table. Cedar does less here than the name on the box suggests, and it is better to say so: today it holds one baseline <code>permit</code> for the tools, and the department rule it was meant to enforce cannot fire on this auth path. The grant is checked in the tools Lambda, and the read it allows is then enforced by IAM.</p>
+    <p>That is why the grant lives in its own table, not in Cedar. The static department gate is a different story now: it holds one baseline <code>permit</code> for the tools, and - since the access token carries the caller's department claim - a second policy that actually refuses a non-Engineering caller at the Gateway, before any of this project's own code runs. The grant itself is still checked in the tools Lambda, and the read it allows is then enforced by IAM: Cedar decides who may try a tool at all, the tools Lambda decides who may cross a boundary, and IAM decides how long a crossing lasts.</p>
 
     <h2 id="rules">The Rules It Follows</h2>
 
@@ -980,7 +980,7 @@ grant_activity as Priya (neither):
     <li><strong>The owner of the data decides.</strong> Only a domain's owner approves a grant or publishes a fact, and the owner can see what was done under a grant.</li>
     <li><strong>No record, no answer.</strong> Every read and write is recorded, allowed or refused. If it cannot be recorded, it does not happen.</li>
     <li><strong>Fail closed.</strong> Content the Guardrail blocks, or cannot check, is not stored.</li>
-    <li><strong>Say what does not hold.</strong> The Cedar department gate does not work on this auth path, and <code>whoami</code> says so to every caller.</li>
+    <li><strong>Say what does not hold.</strong> The Cedar department gate didn't, for a while - the tool's own description said so, to every caller, until it was fixed. The honest version of that right now: the agent is built and deployed, but this account's own AWS Organization blocks it from calling any Claude model, so nobody has had a conversation with it yet.</li>
     </ol>
 
     <h2 id="quickstart">Quickstart</h2>

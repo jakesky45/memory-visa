@@ -43,7 +43,8 @@ The three live checks above are done (T3, T4, S12) - see each row for the result
 ### N10: the department gate
 
 23 November 2026. Jake, on the blog's "One honest gap": "what are we doing?" We fix it.
-Written and tested offline; not deployed.
+**Deployed and proven live the same day, in both stages - this is the first time in the
+project's history that Cedar has actually refused a real request.**
 
 **The gap.** A Cedar policy is meant to keep `check_shipping_classification` for
 Engineering. It tests `principal.hasTag("department")`. The Gateway only sees access
@@ -60,46 +61,36 @@ must be in the access token.
 | The Cedar policy | `LOG_ONLY` by default, `ACTIVE` with `-c departmentGate=active`. Two steps on purpose: prove the claims arrive, then enforce |
 | `whoami` | Says "Engineering only" when the gate is active, and "blocks nobody" when it is not |
 
-**Not proven**
+**Run 23 November 2026, against the deployed stack, in two stages.**
 
-| # | Not proven | If it fails |
+| # | Was not proven | Result |
 |---|---|---|
-| G1 | AgentCore turns a claim that Cognito added (`department`) into a tag the policy can read. The AWS page names "username, scope, role, etc." | If Maya is refused in step 5, the claim is not a tag. Send me the decoded token and the refusal |
-| G2 | The Essentials plan is accepted on this pool, and what it costs. New pools usually have it already | The deploy says so |
-| G3 | The trigger's answer shape is right for version 2 | Step 2 shows no `department` in the token |
+| G1 | AgentCore turns a claim that Cognito added (`department`) into a tag the policy can read | **Confirmed.** Decoded Maya's fresh access token directly: `"department": "engineering", "org": "robotinc"`, both present. The policy then refused Liam and allowed Maya on exactly that basis |
+| G2 | The Essentials plan is accepted on this pool, and what it costs | **Accepted.** `cdk diff` showed `UserPoolTier: ESSENTIALS` as a plain in-place update, no replacement. Cost not separately measured |
+| G3 | The trigger's answer shape is right for version 2 | **Confirmed** by G1 - the claim would not be in the token otherwise |
 
-**To deploy and check**
+Stage 1 (`cdk deploy MemoryVisaAgentCore`, gate still `LOG_ONLY`): `cdk diff` matched the
+prediction exactly - one new Lambda, the pool's trigger and plan, one new environment
+variable, no change to the policy. Fresh tokens for Maya and Liam both decoded with the
+right claims, and the tool answered 200 for both - LOG_ONLY still blocks nobody.
 
-```bash
-make eval                                    # expect: 118 passed
-cd cdk && cdk diff MemoryVisaAgentCore       # expect: one new Lambda, the pool's trigger and plan, one new environment variable. The policy stays LOG_ONLY
-cdk deploy MemoryVisaAgentCore && cd ..
+Stage 2 (`cdk deploy MemoryVisaAgentCore -c departmentGate=active`): `cdk diff` showed
+exactly the two changes expected, nothing else. Then:
 
-# 1. New tokens. The old ones were issued before the trigger.
-MAYA=$(token maya); LIAM=$(token liam)
-
-# 2. Is the claim in the access token?
-printf '%s' "$MAYA" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{department, org, scope, client_id}'
-# expect: "department": "engineering", "org": "robotinc"
-
-# 3. Still LOG_ONLY: both may call the tool
-eng() { curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $1" -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"EngineeringTools___check_shipping_classification","arguments":{"shipment":"X-7"}}}' \
-  | sed -n 's/^data: //p' | jq -c '.result.content[0].text // .error'; }
-eng "$MAYA"; eng "$LIAM"                      # expect: both get the stub answer
-
-# 4. Enforce it
-cd cdk && cdk deploy MemoryVisaAgentCore -c departmentGate=active && cd ..
-
-# 5. The gate
-eng "$MAYA"                                   # expect: the stub answer
-eng "$LIAM"                                   # expect: refused by the policy engine
-call "$MAYA" whoami '{}' | jq -r '.content[0].text' | jq '.body | fromjson | .live_gateway_tools'   # expect: "Engineering only ..."
+```
+Maya (engineering): 200, the stub answer
+Liam (legal):        -32002 "Tool Execution Denied ... [Policy evaluation denied due to StaticDomainGating-7sh47t_0ls]"
+Maya's whoami:       live_gateway_tools.EngineeringTools___check_shipping_classification =
+                     "Engineering only - a Cedar policy refuses any caller whose access
+                     token has no department claim equal to 'engineering'"
 ```
 
-If step 5 refuses Maya too, go back with `cdk deploy MemoryVisaAgentCore` (no context
-value) and send me the output of step 2.
+Regression check: memory access was unaffected - Liam's own `memory_search` still worked,
+Maya was still refused on Legal's namespace with no grant. `cdk diff` against the deployed,
+`departmentGate=active` stack shows no differences.
+
+This is the first real decision Cedar has made in this project. Every other policy so far
+either permitted everything or was LOG_ONLY.
 
 When it passes: the blog's "One honest gap" paragraph becomes "the gate holds", the rule
 "say what does not hold" needs a new example, and Cedar has a real job in the talk.

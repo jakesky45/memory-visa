@@ -34,9 +34,9 @@ Deployed in the sandbox account, `eu-west-2`:
 | VPC + flow logs | live | |
 | Bedrock Guardrail | deployed, call path confirmed live | every `memory_write` passes it first: a secret is masked, a private key refuses the whole write, and content that cannot be checked is not stored (`src/memory/guardrail.py`). No PII rules - confirmed live, Liam's and Maya's names came back unmasked. The one live write so far was plain text; masking and blocking a real secret are tested offline only, not yet proved against AWS |
 | Cognito pool + domain | live | custom `department`/`org` claims, both OAuth flows configured |
-| AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` kept at `LOG_ONLY` (see below) |
+| AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` now `ACTIVE` too (see below) |
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth; `IdentityInterceptor` resolves real Cognito identity before every tool call |
-| EngineeringTools target | `READY`, gate inert | `check_shipping_classification`'s department gate can't fire - Cognito access tokens carry no custom attributes, so `hasTag("department")` is never true. Left at `LOG_ONLY` rather than claim a gate that doesn't hold |
+| EngineeringTools target | `READY`, gate `ACTIVE` | `check_shipping_classification`'s department gate works: a Cognito pre-token-generation trigger (`src/tools/token_claims.py`) puts the caller's own `org`/`department` attributes into the access token, so `hasTag("department")` can be true. Confirmed live, 23 November 2026: Maya (engineering) allowed, Liam (legal) refused by the policy engine itself |
 | AccessRequestTools target | `READY` | ten MCP tools (`request_access`, `approve_access`, `whoami`, `memory_search`, `memory_write`, `grant_activity`, `publish_fact`, etc.), one Lambda, state in DynamoDB |
 | GrantNotifier | `READY`, not wired up | Lambda + DynamoDB Streams trigger fire on every grant write, but `/memory-visa/slack-webhook-url` was never set - nothing is delivered yet |
 | AgentCore Memory | `ACTIVE` | pool-tenancy, one semantic strategy, 31-day record expiry |
@@ -46,7 +46,6 @@ Deployed in the sandbox account, `eu-west-2`:
 
 **Known gaps:**
 - The DynamoDB grant store is an append-only table queried by `grant_id`, not a single `audit_log` attribute like the in-memory version.
-- Reads (`memory_search`) aren't written to the audit table yet - only the request/approval/expiry lifecycle is. A read's own log line goes to stdout, with no verified-identity check on that log path.
 - When you capture a `tools/call` response in a shell variable, print it with `printf '%s'`, not zsh's `echo`. The tool's result is JSON inside a JSON string, and zsh's `echo` removes one level of backslashes, which makes a valid response look malformed. See `REVIEW.md`'s S12.
 
 ## Quickstart
