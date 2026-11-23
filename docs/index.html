@@ -608,9 +608,9 @@
 
     <h2 id="aws-enforces">AWS Enforces Every Read</h2>
 
-    <p>Here's the uncomfortable part. Everything up to now comes down to one Python <code>if</code>. That's a thin thing to hang a boundary on. If the tools Lambda could read all of memory, then one bug in that <code>if</code> - or one new code path that forgets to call it - would open everything, and nothing would notice.</p>
+    <p>Checking a grant in Python is only half a boundary. In a typical setup, the backend Lambda has an IAM role that can read the entire Memory store, leaving application code as the only thing stopping Engineering from reading Finance. One bug in that check - or one new code path that forgets to call it - opens everything, and AWS wouldn't blink.</p>
 
-    <p>So the tools Lambda isn't allowed to read memory. At all. For every read it has to go and ask STS for temporary credentials, and it attaches a session policy that narrows them to one namespace and one deadline:</p>
+    <p>memory-visa removes that single point of failure. The tools Lambda's own execution role has no permission to read Memory at all. To run a search, it has to call <code>sts:AssumeRole</code> on a separate visa role and attach an inline session policy that narrows those temporary credentials to one namespace and one deadline:</p>
 
     <div class="sketch col">
       <div class="box wobble-a">Tools Lambda<br><span class="sub">checks the grant. Has no permission to read memory</span></div>
@@ -661,7 +661,7 @@
 
     <p>Reading your own namespace goes the same way, just with a short fixed window. There's one path to memory, and it's the narrow one.</p>
 
-    <p>It's worth being honest about what this buys, because it's easy to oversell. Our code still decides <em>whether</em> to issue a visa, and for which namespace - get that wrong and you've issued the wrong visa. What AWS now guarantees is narrower, and still worth having: a read with no visa has no credentials at all; a visa can't reach a second namespace; it stops at its deadline whether or not anyone remembers; and every read shows up in CloudTrail as a named STS session. Deciding and enforcing are two different jobs, and the enforcing isn't ours any more.</p>
+    <p>It's worth being exact about what this buys, because it's easy to oversell. Our code still decides <em>whether</em> to issue a visa, and for which namespace - get that wrong and you've issued the wrong visa. What AWS guarantees is narrower, and still worth having: a read with no visa has no credentials at all; a visa can't reach a second namespace; it stops at its deadline whether or not anyone remembers; and every read shows up in CloudTrail as a named STS session. Deciding and enforcing are two different jobs, and the enforcing isn't ours any more.</p>
 
     <h2 id="published-facts">Publish Once, Read Everywhere</h2>
 
