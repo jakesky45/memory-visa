@@ -754,6 +754,27 @@ class AgentCoreStack(Stack):
                 resources=[f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*"],
             )
         )
+        # N6: the agent in this container calls a model through the Anthropic SDK's
+        # Bedrock client (src/agents/chat_agent.py). That is all this role may do
+        # besides start: it has no memory, grant or Guardrail permission, because the
+        # agent reaches memory through the Gateway with the user's own token (D9).
+        # Resource "*": the AWS pages checked on 23 November 2026 name the action and
+        # give no ARN format for it. Narrow this to the model once the format is known.
+        self.runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock-mantle:CreateInference"],
+                resources=["*"],
+            )
+        )
+        # The Gateway's MCP URL. Read at start and not passed as an environment
+        # variable: the Gateway's target depends on this Runtime, so a reference
+        # from the Runtime to the Gateway would be a circular dependency.
+        self.runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ssm:GetParameter"],
+                resources=[f"arn:aws:ssm:{self.region}:{self.account}:parameter/memory-visa/gateway-mcp-url"],
+            )
+        )
         # The visa role (src/memory/visa_credentials.py). It may read any namespace,
         # but nobody uses it as it is: a caller assumes it once per read with a
         # session policy that narrows it to one namespace and one end time. A
@@ -847,10 +868,13 @@ class AgentCoreStack(Stack):
             "OrchestratorRuntime",
             agent_runtime_name="memory_visa_orchestrator",
             role_arn=self.runtime_role.role_arn,
-            # M1: no memory/grants/guardrail env vars - server.py is a bare
-            # health check now, nothing here reads them. They live on
-            # access_request_tools_fn, which does the real work.
-            environment_variables={},
+            # M1: no memory/grants/guardrail env vars - they live on
+            # access_request_tools_fn, which does the real work. N6: only the
+            # model the agent calls. Sonnet 5.5 or Haiku 5.5 cost less:
+            # cdk deploy -c agentModelId=anthropic.claude-sonnet-5-5
+            environment_variables={
+                "MODEL_ID": self.node.try_get_context("agentModelId") or "anthropic.claude-opus-5-5",
+            },
             agent_runtime_artifact=agentcore.CfnRuntime.AgentRuntimeArtifactProperty(
                 container_configuration=agentcore.CfnRuntime.ContainerConfigurationProperty(
                     # Referenced by digest, not the mutable :latest tag -
@@ -917,7 +941,7 @@ class AgentCoreStack(Stack):
             "OrchestratorTarget",
             gateway_identifier=self.gateway.attr_gateway_identifier,
             name="Orchestrator",
-            description="The real orchestrator - memory put/retrieve, access requests - fronted by the gateway",
+            description="The agent: a chat turn with a model on Bedrock; memory only through the Gateway tools, as the caller",
             credential_provider_configurations=[
                 agentcore.CfnGatewayTarget.CredentialProviderConfigurationProperty(
                     credential_provider_type="GATEWAY_IAM_ROLE",

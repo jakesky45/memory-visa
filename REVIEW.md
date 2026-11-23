@@ -22,7 +22,7 @@ Four stages. Nothing in a later stage is built until the one before it is proven
 | 1. Safe and true | Nothing wrong goes live, and the blog claims nothing that has not run | Claude | **Done.** See "Stage 1" below |
 | 2. Deploy and prove | The visa, proven against AWS | Claude, with Jake's AWS session | **Done.** See "Stage 2" below |
 | 2b. Finish the live checks | Three small checks stage 2 left out | Claude, with Jake's AWS session | **Done.** See "Third review" below |
-| 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | To do |
+| 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | **Started.** The agent is written and tested offline; it waits on a live run. See "Stage 3: the agent" |
 | 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
 
 ### Third review: commits `0091dbf` and `4b31130`
@@ -44,35 +44,122 @@ The three live checks above are done (T3, T4, S12) - see each row for the result
 
 | Who | What | Where |
 |---|---|---|
-| Jake | Decide how the agent learns who is talking to it (D9), and which model it uses (D10) | "Your decisions" |
+| Jake | Run the agent against the real model: steps 1 to 6 | "Stage 3: the agent", below |
 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
-| Claude | Build the agent, once D9 is answered | "Stage 3: the plan" |
+| Claude | After your run: provenance and reads in the audit table (N2), then published facts (N8), then search across namespaces (N7) | "Next to build" |
 
-### Stage 3: the plan
+### Stage 3: the agent
 
-The repository has tools and no agent. Nothing calls a model, so the talk cannot yet show
-memory used in a conversation. That is demo beats 1 and 2.
+Decided 23 November 2026: D9 is option A, and D10 is Claude Opus 5.5 on Amazon Bedrock.
 
-The first build, N6:
+**What was built (N6)**
 
-- A small agent in the orchestrator container. The container is deployed and only answers
-  `/ping` today, and `server.py` was kept for this.
-- It calls a model on Bedrock and has two tools: search memory and write memory.
-- It follows one conversation (short-term memory) and recalls what it learned in a new
-  conversation (long-term memory).
-- It reads shared memory only through the visa, so a refusal by AWS shows in the conversation.
+| File | What it does |
+|---|---|
+| `src/agents/chat_agent.py` | The agent. It calls the model with the Anthropic SDK's Bedrock client (`AnthropicBedrockMantle`, model `anthropic.claude-opus-5-5`, set by `MODEL_ID`). It has four tools from the Gateway: `whoami`, `memory_search`, `memory_write`, `request_access`. It cannot approve, deny or revoke |
+| `src/agents/gateway_client.py` | A small MCP client. It sends the user's own token to the Gateway and returns the tool's status, so a 403 reaches the model as a refusal |
+| `src/server.py` | `POST /invocations` with `{"prompt", "access_token", "session_id"}`. It does not read the token. It passes it to the Gateway. One conversation per session and verified email |
+| `demo/agent_chat.py` | Talk to the agent from a terminal. Each memory call is printed under the reply. `/new` starts a new conversation |
+| `tests/test_chat_agent.py` | 17 tests with a fake model and a fake Gateway |
+| `cdk/stacks/agentcore_stack.py` | The Runtime role may call the model and read one parameter (the Gateway URL). `MODEL_ID` on the Runtime. No memory permission |
+| `Dockerfile` | Installs `anthropic[bedrock]` |
 
-The decision it waits on, D9: how the agent knows who is talking to it. This is the problem
-the memory tools had (M1), and the agent must not bring it back.
+How D9 is kept:
 
-| Option | How | For | Against |
-|---|---|---|---|
-| **A. The agent calls the Gateway's memory tools with the user's own token** (recommended) | The agent has no memory permissions. Identity, grants, the Guardrail and the visa stay where they are proven | One path to memory. Nothing to prove twice | The user's token must be passed through to the agent |
-| B. The agent reads memory directly | The agent has its own role and its own copy of the checks | Less wiring | A second path to memory with its own identity handling. That is what M1 removed |
+- The agent has no memory, grant or Guardrail permission. Memory is reached only through the Gateway tools, with the user's token.
+- Who the user is comes from `whoami` through the Gateway. A name or a `claims` object in the request body is ignored, and a test proves it.
+- A token the Gateway rejects gets a 403. Nothing in the container decides identity. M1 stays closed.
+- S11 is closed in a different way: `Orchestrator___POST:/invocations` has a job again, so it stays in the Cedar permit.
 
-After the agent, in order: provenance on results and reads in the audit table (N2), search
-across every namespace the caller may read (N7), and one more way to share besides the
-visa (N8).
+Short-term memory is the message list of one conversation, held in the container for that session. Long-term memory is AgentCore Memory, through the tools.
+
+**What is not proven yet**
+
+| # | Not proven | How it is settled |
+|---|---|---|
+| U1 | The model's real behaviour. The tests use a fake model | Step 3 |
+| U2 | Your account can call Claude Opus 5.5 in `eu-west-2`. The Anthropic page lists the region; access is per account | Step 2 |
+| U3 | The IAM statement for the Runtime role. The action is `bedrock-mantle:CreateInference`. The AWS pages I read give no ARN format for it, so the resource is `*` | Step 5. If the model call is denied, send me the error |
+| U4 | The path through the Gateway to the container: the URL, whether the body arrives unchanged, and whether the Gateway waits long enough for a model call | Step 6. The demo does not depend on it: step 3 runs the same agent on your machine |
+| U5 | `cdk synth`. I could not run it here | Step 5, the diff |
+
+**Runbook: stage 3**
+
+Use the shell variables and the `token` function from "Runbook: stage 2 on another machine", step 6.
+
+**1. Get the code and run the tests**
+
+```bash
+git pull
+pip install pytest boto3 "anthropic[bedrock]"
+make eval
+```
+
+Expected result: 66 passed.
+
+**2. Check model access**
+
+In the Amazon Bedrock console, region `eu-west-2`, open "Model access" and make sure Claude Opus 5.5 is enabled. Then:
+
+```bash
+python3 - <<'PY'
+from anthropic import AnthropicBedrockMantle
+client = AnthropicBedrockMantle(aws_region="eu-west-2")
+message = client.messages.create(model="anthropic.claude-opus-5-5", max_tokens=200,
+                                 messages=[{"role": "user", "content": "Say hello in five words."}])
+print(next(b.text for b in message.content if b.type == "text"))
+PY
+```
+
+Expected result: one short sentence. If access is refused and you want a different model, add `--model anthropic.claude-sonnet-5-5` in step 3.
+
+**3. Talk to the agent on your machine (beats 1 and 2)**
+
+No deploy is needed for this step. The Gateway and the tools are the deployed ones.
+
+```bash
+MV_PASSWORD='<password>' python3 demo/agent_chat.py --user maya
+```
+
+Say these, in order:
+
+| You type | Expected result |
+|---|---|
+| `The X-7 sensor ships under classification 7A994. Remember that.` | A `memory_write` line with status 200, to an Engineering namespace |
+| `Which classification did I give, and for which product?` | The right answer, with no memory call. That is short-term memory |
+| Wait one minute, then `/new` | "new conversation" |
+| `What is the X-7 classified as?` | A `memory_search` line with status 200, and the answer with the namespace it came from. That is long-term memory |
+
+**4. The refusal and the visa in a conversation (beats 3 and 4)**
+
+In the same chat as Maya:
+
+| You type | Expected result |
+|---|---|
+| `What has Legal recorded about the X-7?` | A `memory_search` line with status 403, marked REFUSED. The agent says access was refused and does not guess |
+| `Request access to Legal for one hour. Reason: export review for the X-7.` | A `request_access` line with status 200 and a grant ID |
+| In a second terminal, approve as Liam: `call "$LIAM" approve_access '{"grant_id":"<id>"}'` | `"status": "active"` |
+| `Try Legal again.` | A `memory_search` line with status 200, and Legal's fact |
+
+**5. Deploy the agent to the Runtime**
+
+```bash
+# Build and push the image as in the stage 2 runbook, step 4, and put the new digest in
+# cdk/stacks/agentcore_stack.py.
+cd cdk && cdk diff MemoryVisaAgentCore
+```
+
+Expected diff: two new statements on the Runtime role (`bedrock-mantle:CreateInference`, and `ssm:GetParameter` on `/memory-visa/gateway-mcp-url`), `MODEL_ID` on the Runtime, the new image digest, and a new description on the Orchestrator target. Nothing else. Then `cdk deploy MemoryVisaAgentCore`.
+
+**6. Talk to the deployed agent**
+
+```bash
+MV_PASSWORD='<password>' python3 demo/agent_chat.py --user maya --url "$GATEWAY_URL/invocations"
+```
+
+I am not sure of this URL (U4). If it fails, send me the error and the Gateway target's details, and use step 3 for the demo.
+
+**7. Send me the output of steps 2, 3, 4 and 6**
 
 ### Stage 2: what was done
 
@@ -423,8 +510,8 @@ If the proof does not match:
 | D6 | Verify three facts before they are said on stage (B4) | I could not confirm them | The name "Dogwood"; the AWS security blog and its date; the AgentCore and Bedrock Agents dates |
 | D7 | What may memory hold? (S4) | **Decided:** names stay; secrets are masked or refused | |
 | D8 | When is the Summit, and how long is the slot? | It decides how much of stages 3 and 4 is realistic | |
-| D9 | How does the agent learn who is talking to it? | It decides whether there is one path to memory or two | Option A: the agent calls the Gateway's memory tools with the user's own token. See "Stage 3: the plan" |
-| D10 | Which model does the agent use on Bedrock? | Cost, and what your account has enabled | I will check what is current and propose one before writing code |
+| D9 | How does the agent learn who is talking to it? | It decides whether there is one path to memory or two | **Decided: option A.** Built. See "Stage 3: the agent" |
+| D10 | Which model does the agent use on Bedrock? | Cost, and what your account has enabled | **Decided: Claude Opus 5.5** (`anthropic.claude-opus-5-5`). `MODEL_ID` or `-c agentModelId=` changes it; Sonnet 5.5 and Haiku 5.5 cost less |
 
 ### Next to build
 
@@ -437,7 +524,7 @@ In this order. Each is one change with its own tests.
 | N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | **Done.** 24 tests |
 | N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the outcome and the grant ID | M4, M10, S9 | To do |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
-| N6 | An agent that calls a model and uses memory in a conversation | Scale | **Next.** Waits on D9. See "Stage 3: the plan" |
+| N6 | An agent that calls a model and uses memory in a conversation | Scale | **Written and tested offline** (17 tests). Not deployed, not run against a real model. See "Stage 3: the agent" |
 | N7 | Search across every namespace the caller may read | M7 | To do, after N2 |
 | N8 | One more sharing pattern: a published fact, or a brokered answer. Project namespaces working live | Scale, S6 | To do |
 | N9 | Shared facts written as long-term records with metadata; path namespaces | M5, M8 | To do, after A8 |
@@ -463,8 +550,8 @@ The blog was updated in `3db97ab`. What changed, and what is still open:
 
 | Beat | What the audience sees | Ready? |
 |---|---|---|
-| 1. Short-term memory | Maya asks two questions in one conversation; the agent follows the thread | No. Needs N6 |
-| 2. Long-term memory | A new conversation; the agent still knows what it learned | No. Needs N6 |
+| 1. Short-term memory | Maya asks two questions in one conversation; the agent follows the thread | After stage 3, step 3 |
+| 2. Long-term memory | A new conversation; the agent still knows what it learned | After stage 3, step 3 |
 | 3. Shared, and refused | Legal records a fact; Engineering's read is refused | After A7. Refused by AWS itself after A8 |
 | 4. The visa | Liam approves; the same call works; the window closes; AWS refuses again. The policy is on screen | After A9 |
 

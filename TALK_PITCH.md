@@ -20,8 +20,8 @@ on purpose.* Not final - see "Open items" at the end before submitting.
 
 ## Level
 
-**300 - Advanced.** The mechanism (STS session-tagged credentials, Cedar policy, Cognito
-claims) is expert-adjacent, but the talk is a narrative with a live demo, not a hands-on
+**300 - Advanced.** The mechanism (STS credentials narrowed by a session policy, Cedar
+policy, Cognito claims) is expert-adjacent, but the talk is a narrative with a live demo, not a hands-on
 build. 400 is the alternative if the content committee wants more IAM-policy detail on
 screen and less story.
 
@@ -39,22 +39,23 @@ attendees build themselves.
 > someone needs a legitimate, time-boxed exception. In this session, see a real
 > cross-domain grant workflow on Amazon Bedrock AgentCore: a requester asks, the domain
 > owner approves from their own AI client with no bespoke UI, and AWS itself - not
-> application code - enforces the boundary and the expiry, through STS session-tagged
-> credentials scoped to one namespace until one moment. Watch the grant work, then watch
+> application code - enforces the boundary and the expiry, through short-lived STS
+> credentials with a session policy for one namespace and one deadline. Watch the grant work, then watch
 > AWS refuse the same read the instant the window closes. Along the way: where Cedar's
 > policy engine helps today and where it doesn't yet, why LLM-extracted memory is the
 > wrong store for a fact someone needs to trust, and two production bugs - a policy that
 > can never fire, a Guardrail that was never actually called - that honest testing caught
-> before an audience would have. Leave with a five-pattern model for sharing agent memory
-> - scoped by default, shared by design, published facts, brokered answers, and the visa
-> as the exception path - and the reference architecture for the one pattern most teams
-> haven't built yet: the human-approved crossing.
+> before an audience would have. Leave with a framework of five patterns for sharing
+> agent memory - scoped by default, shared by design, published facts, brokered answers,
+> and the visa as the exception path - and the reference architecture for the one pattern
+> most teams haven't built yet: the human-approved crossing.
 
 (~175 words; trim toward 150 if the CFP has a hard limit.)
 
 ## Three takeaways (if the form asks for them separately)
 
-1. A five-pattern model for sharing agent memory across teams, with the visa positioned as
+1. A framework of five patterns for sharing agent memory across teams (three shown live:
+   scoped by default, shared by design, the visa; two described), with the visa positioned as
    the exception path, not the default - and a concrete reason why: AgentCore's Dogwood
    temporal policies are scoped to one caller's session history, which can't model a
    two-person approval.
@@ -79,10 +80,14 @@ catalog checked so far has.
 - **D8** (`REVIEW.md`, "Your decisions"): when the Summit is and how long the slot is -
   still unanswered, and it decides whether this is realistic as a 30-minute breakout or
   needs cutting to a shorter slot.
-- **Stage 3** isn't built yet (`REVIEW.md`, "Stage 3: the plan"): demo beats 1 and 2 (short-
-  and long-term memory in a real conversation) need an agent that calls a model, which
-  doesn't exist yet. The abstract above only promises what demo beats 3 and 4 already
-  prove live - it doesn't oversell beats 1 and 2.
+- **Stage 3**: the agent for demo beats 1 and 2 (short- and long-term memory in a real
+  conversation) is written and tested offline, and not yet deployed or run against a real
+  model (`REVIEW.md`, "Stage 3: the agent"). The abstract above only promises what demo
+  beats 3 and 4 already prove live - it doesn't oversell beats 1 and 2.
+- **The five patterns**: the session tags on the visa are for the audit trail only; the
+  scoping is the session policy. Published facts and brokered answers are not built. The
+  abstract calls the five a framework for that reason. Building published facts (N8)
+  would let the talk show a fourth live.
 - **D6**: three facts named in the talk outline (the name "Dogwood", an AWS security blog's
   publish date, the AgentCore/Bedrock Agents GA dates) still need a last check against
   live AWS documentation immediately before the talk, not just at review time.

@@ -129,7 +129,10 @@ cdk destroy --all
 | `src/tools/access_request_tools.py` | the grant workflow plus `memory_search`/`memory_write` - eight MCP tools, one Lambda |
 | `src/tools/grant_notifier.py` | DynamoDB Streams → Slack, both directions |
 | `src/tools/check_shipping_classification_tool.py` | the one real Engineering Gateway tool, a stub |
-| `src/server.py` | the orchestrator - reduced to a `/ping` health check; memory and grant access moved to MCP tools above |
+| `src/agents/chat_agent.py` | the agent - Claude on Amazon Bedrock, with memory only through the Gateway tools and the user's own token |
+| `src/agents/gateway_client.py` | a small MCP client for the Gateway (`tools/list`, `tools/call`) |
+| `src/server.py` | the orchestrator - `/ping`, and `/invocations` for one chat turn with the agent |
+| `demo/agent_chat.py` | talk to the agent from a terminal; each memory call is shown under the reply |
 | `tests/` | the eval suite - runs the six properties offline, no AWS account needed |
 | `cdk/` | network, guardrails, and agentcore CDK stacks |
 | `Dockerfile` | the orchestrator's container image (arm64, `PYTHONUNBUFFERED=1`) |
