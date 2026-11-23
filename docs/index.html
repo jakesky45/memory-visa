@@ -381,6 +381,7 @@
     <a href="#lifecycle">The lifecycle</a>
     <a href="#what-a-grant-unlocks">What a grant unlocks</a>
     <a href="#maya-gets-her-fact">Maya gets her fact</a>
+    <a href="#gateway-escaping">The Gateway's own bug</a>
     <a href="#approval-ui">No bespoke UI</a>
     <a href="#identity-binding">Identity binding</a>
     <a href="#closing-the-loop">Closing the loop</a>
@@ -402,6 +403,7 @@
         <a href="#lifecycle">The lifecycle</a>
         <a href="#what-a-grant-unlocks">What a grant unlocks</a>
         <a href="#maya-gets-her-fact">Maya gets her fact</a>
+        <a href="#gateway-escaping">The Gateway's own bug</a>
         <a href="#approval-ui">No bespoke UI</a>
         <a href="#identity-binding">Identity binding</a>
         <a href="#closing-the-loop">Closing the loop</a>
@@ -577,15 +579,15 @@
     <li>Fixing that uncovered a second issue: extraction filed records under AWS's default namespace template (<code>/strategies/{strategyId}/actors/{actorId}/</code>), while this project's <code>retrieve()</code> queries the plain namespace string directly (<code>org_robotinc_dept_legal</code>). Two paths that never intersected. Overriding the strategy's namespace to <code>{actorId}</code> fixed it without touching a line of application code.</li>
     </ol>
 
-    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, same as <code>request_access</code> through <code>whoami</code> - discovered via <code>tools/list</code>, identity from <code>IdentityInterceptor</code>'s token resolution, never an argument a caller supplies. They didn't start that way: the first version of this demo put memory access behind a plain HTTP passthrough target that trusted a <code>claims</code> dict in the request body - org, department, email, whatever the caller typed. Anyone holding a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is gone, not patched: the orchestrator behind it is now a bare <code>/ping</code> health check with no memory or grant logic left to call. With both extraction bugs fixed and memory access now a real tool, here's the scenario from the top of this post. <strong>These two calls show the expected output, not a captured run:</strong> the tools are in the code and tested offline, but have not been called against the deployed stack yet. The fact and the search results are from the earlier run through the old path. Liam writes the fact Maya needs:</p>
+    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, same as <code>request_access</code> through <code>whoami</code> - discovered via <code>tools/list</code>, identity from <code>IdentityInterceptor</code>'s token resolution, never an argument a caller supplies. They didn't start that way: the first version of this demo put memory access behind a plain HTTP passthrough target that trusted a <code>claims</code> dict in the request body - org, department, email, whatever the caller typed. Anyone holding a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is gone, not patched: the orchestrator behind it is now a bare <code>/ping</code> health check with no memory or grant logic left to call. With both extraction bugs fixed and memory access now a real tool, here's the scenario from the top of this post, run for real against the deployed stack. (The JSON below is reformatted for readability - see the next section for why it can't be pasted verbatim.) Liam writes the fact Maya needs:</p>
 
     <pre><code>{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
      "params": {"name": "AccessRequestTools___memory_write",
                 "arguments": {"namespace": "org_robotinc_dept_legal",
                               "text": "The X-7 battery pack is classified under export control code 7A994 and requires an export licence before international shipment."}}}</code></pre>
-    <pre><code>{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795364012656#508fa195"}}</code></pre>
+    <pre><code>{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795429942485#5581be4e"}}</code></pre>
 
-    <p>A minute or so later - real background extraction, not an instant write - Maya, holding the grant from earlier in this post, searches:</p>
+    <p>A couple of minutes later - real background extraction, not an instant write - Maya, holding a grant into Legal's namespace, searches:</p>
 
     <pre><code>{"jsonrpc": "2.0", "id": 2, "method": "tools/call",
      "params": {"name": "AccessRequestTools___memory_search",
@@ -596,11 +598,21 @@
       {"text": "Supplier X is banned under export control classification 7A994 effective immediately (as of 2026-11-22)."}
     ]}</code></pre>
 
-    <p>That first result is the fact from paragraph one. Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships - and a log line records who asked, which namespace, and what they searched for, not just that some request happened:</p>
+    <p>That first result is the fact from paragraph one. Maya's packaging manifest has what it needs, three days before the Atlas-v2 ships - and a log line records who asked, which namespace, and what they searched for, not just that some request happened. That line goes to CloudWatch Logs via stdout, under this Lambda's own, verified identity - not yet to the DynamoDB audit table the grant lifecycle writes to. The request/approval/expiry trail can't be forged; a read's trail, today, is a log line someone would have to go looking for.</p>
 
-    <pre><code>{"email": "maya@robotinc.example", "org": "robotinc", "departments": ["engineering"], "action": "memory_search", "namespace": "org_robotinc_dept_legal", "at": "2026-11-22T16:17:46Z", "query": "X-7 battery pack export control classification"}</code></pre>
+    <p>The grant itself proved out exactly as designed, end to end, against the real stack: Maya's own first search, with no grant yet, came back <code>403 "no static claim, and no active grant"</code>; once Liam approved, the same search returned the fact; a write under that same grant came back <code>403 "a grant never allows a write"</code>; and once the three-minute window closed, the same search was refused again - the grant doesn't linger past its own expiry.</p>
 
-    <p>Named rather than buried: that line goes to CloudWatch Logs via stdout, under this Lambda's own, verified identity - not yet to the DynamoDB audit table the grant lifecycle writes to. The request/approval/expiry trail can't be forged; a read's trail, today, is a log line someone would have to go looking for.</p>
+    <h2 id="gateway-escaping">The Gateway's Own Bug</h2>
+
+    <p>Every one of those JSON blocks above is reformatted. What actually comes back over the wire is not valid JSON, and that is not this project's bug to fix.</p>
+
+    <p>AgentCore Gateway wraps a Lambda-backed tool's result into the MCP response as a string - the <code>content[0].text</code> field of a <code>tools/call</code> reply. Doing that correctly means escaping the tool result's own quotes and backslashes a second time, so the whole thing survives being embedded as a string inside a string. The Gateway escapes the backslash but not the quote that follows it, so a plain, unremarkable result like <code>{"hello": "world"}</code> comes back as:</p>
+
+    <pre><code>"text":"{\"hello\":\"world\",\"nested\":{\"quote\":\"a \\"quoted\\" value\"}}"</code></pre>
+
+    <p>That <code>\\"</code> should be <code>\\\"</code>. Any JSON parser - not just <code>jq</code> - reads the bare <code>"</code> as the end of the <code>text</code> string and fails on whatever follows. Two things rule out our own code as the cause: calling the Lambda directly, bypassing the Gateway, returns correctly-escaped JSON every time; and swapping the Lambda's handler for one that returns a plain dict with no <code>statusCode</code>/<code>body</code> wrapper at all reproduces the exact same broken escaping. It is unconditional - any object-shaped tool result trips it, because even a result with no user text in it at all still has field names in quotes. That means this was never specific to the two new tools: it has been there since the first of the eight tools went live, through every <code>tools/call</code> this post has described as "confirmed live." Nobody had reason to feed a strict parser the raw bytes before now.</p>
+
+    <p>There is nothing to fix in this repository. The transcripts above are the tool results after undoing the missing escape level - the data in them is real, captured from the live calls. A real MCP client still can't parse the raw response as sent. Until AWS fixes it or this project builds a tolerant client around it, that is the honest state of the thing.</p>
 
     <h2 id="approval-ui">Getting the Approval Out of a Bespoke UI</h2>
 
@@ -838,7 +850,7 @@
       --auth-parameters USERNAME=maya,PASSWORD='&lt;temporary-password&gt;' \
       --query AuthenticationResult.AccessToken --output text)</code></pre>
 
-    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly lists the tools, scoped to Maya specifically instead of the shared service credential. Six were listed in the last live run; <code>memory_search</code> and <code>memory_write</code> are the expected additions once this version is deployed:</p>
+    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly lists the tools, scoped to Maya specifically instead of the shared service credential - all eight, confirmed live, this version:</p>
 
     <pre><code>curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \

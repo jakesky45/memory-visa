@@ -32,7 +32,7 @@ Deployed in the sandbox account, `eu-west-2`:
 | Resource | Status | Notes |
 |---|---|---|
 | VPC + flow logs | live | |
-| Bedrock Guardrail | resource live, call path not yet deployed | every `memory_write` passes it first: a secret is masked, a private key refuses the whole write, and content that cannot be checked is not stored (`src/memory/guardrail.py`). No PII rules - shared facts keep their names. In code and tested offline; not yet deployed or verified against AWS |
+| Bedrock Guardrail | deployed, call path confirmed live | every `memory_write` passes it first: a secret is masked, a private key refuses the whole write, and content that cannot be checked is not stored (`src/memory/guardrail.py`). No PII rules - confirmed live, Liam's and Maya's names came back unmasked. The one live write so far was plain text; masking and blocking a real secret are tested offline only, not yet proved against AWS |
 | Cognito pool + domain | live | custom `department`/`org` claims, both OAuth flows configured |
 | AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` kept at `LOG_ONLY` (see below) |
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth; `IdentityInterceptor` resolves real Cognito identity before every tool call |
@@ -41,10 +41,13 @@ Deployed in the sandbox account, `eu-west-2`:
 | GrantNotifier | `READY`, not wired up | Lambda + DynamoDB Streams trigger fire on every grant write, but `/memory-visa/slack-webhook-url` was never set - nothing is delivered yet |
 | AgentCore Memory | `ACTIVE` | pool-tenancy, one semantic strategy, 31-day record expiry |
 | AgentCore Runtime | `READY` | `network_mode="PUBLIC"` (no NAT gateway in this stack) |
+| The visa (`memory/visa_credentials.py`) | proved against real AWS | `demo/visa_credentials_demo.py`: a namespace-scoped, time-boxed credential reads its own namespace, and AWS itself (not this code) refuses a different namespace and refuses the same one once the window closes - both `AccessDeniedException` |
+| The grant lifecycle, end to end | proved against real AWS | request, approve, read under the grant, a write refused under that same grant, and a read refused again once the window closes - all through the real Gateway, not the offline fakes |
 
 **Known gaps:**
 - The DynamoDB grant store is an append-only table queried by `grant_id`, not a single `audit_log` attribute like the in-memory version.
 - Reads (`memory_search`) aren't written to the audit table yet - only the request/approval/expiry lifecycle is. A read's own log line goes to stdout, with no verified-identity check on that log path.
+- **AgentCore Gateway's own `tools/call` response is not valid JSON.** It wraps a Lambda's result into `content[0].text` and under-escapes it by one level - confirmed not our bug (a direct Lambda invoke returns correctly-escaped JSON; a Lambda returning a plain dict with no wrapper breaks the same way). Affects every tool on this Gateway, not just the two added here. See `REVIEW.md`'s S12.
 
 ## Quickstart
 

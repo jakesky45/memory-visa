@@ -20,9 +20,57 @@ Four stages. Nothing in a later stage is built until the one before it is proven
 | Stage | Goal | Who | State |
 |---|---|---|---|
 | 1. Safe and true | Nothing wrong goes live, and the blog claims nothing that has not run | Claude | **Done.** See "Stage 1" below |
-| 2. Deploy and prove | The visa, proven against AWS | Jake | To do: actions A2 to A10 |
-| 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | After stage 2 |
+| 2. Deploy and prove | The visa, proven against AWS | Claude, with Jake's AWS session | **Done.** See "Stage 2" below |
+| 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | To do |
 | 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
+
+### Stage 2: what was done
+
+Run 23 November 2026, against the sandbox account (`<account-id>`, `eu-west-2`), using Jake's
+own AWS SSO session. Actions A1 to A9 all ran; A10 (send me the outputs) is this section.
+
+| Step | Result |
+|---|---|
+| A2, diff | Matched the expected diff exactly: the visa role, the Lambda's five new environment variables and three new permissions, the runtime role losing memory and table access, the two new tools, the Cedar permit, three new parameters, four regex rules with no PII rules |
+| A4, deploy | `cdk deploy --all`, all three stacks. Clean |
+| A5, image | Built and pushed `linux/arm64`, digest `sha256:4c604185eeea6808c48e2c4794fc53a15d9e0f8cdd4d381b01f02189d6002f7f`, committed in `0091dbf` |
+| A6, write | `memory_write` as Liam: `{"result": {"namespace": "org_robotinc_dept_legal", "eventId": "0000001795429942485#5581be4e"}}` |
+| A7, read both ways | `memory_search` as Liam: the fact comes back. As Maya, no grant: `403 "maya@robotinc.example has no access to namespace 'org_robotinc_dept_legal' (no static claim, and no active grant)"` |
+| A8, the visa proof | `1. org_robotinc_dept_legal ALLOWED: 2 record(s)` / `2. org_robotinc_dept_finance REFUSED by AWS: AccessDeniedException` / `3. org_robotinc_dept_legal REFUSED by AWS: AccessDeniedException` (after the window). Lines 2 and 3 refused: the idea holds |
+| A9, one grant end to end | Request, approve, `memory_search` as Maya succeeds, `memory_write` as Maya refused (`"a grant never allows a write"`), `whoami` shows the granted namespace and its `expires_at`, and after the window closes the same search is refused again |
+
+All nine results matched the runbook's "expected result" column exactly. The blog's
+transcripts in "Maya Gets Her Fact" and the Quickstart's `tools/list` now carry this real
+output, not the placeholder from before.
+
+**One new finding, found running A6: S12.** See below.
+
+### S12. The Gateway's own response is not valid JSON
+
+Found running A6 by hand: `jq` choked on the response, and so does Python's own `json.loads` -
+this is not a shell-quoting problem, the bytes on the wire are not valid JSON.
+
+AgentCore Gateway wraps a Lambda tool's result as a string, the `content[0].text` field of a
+`tools/call` response. That needs the result's own quotes and backslashes escaped a second
+time. The Gateway escapes the backslash but not the quote that follows it, so a result as
+plain as `{"hello": "world"}` comes back malformed. Confirmed two ways, to rule out our own
+code: invoking the Lambda directly, bypassing the Gateway, returns correctly-escaped JSON
+every time; and swapping the Lambda's handler for one that returns a plain dict with no
+`statusCode`/`body` wrapper reproduces the identical broken escaping. It is unconditional -
+any object-shaped result trips it, since even a result with no user text at all still has
+field names in quotes. `tools/list` is unaffected; nothing in that response is a nested,
+stringified tool result.
+
+This was not introduced by anything in `3db97ab` or `6725930`. It has been there since the
+first of the eight tools went live - every `tools/list`/`tools/call` this project has called
+"confirmed live" went through this same broken wrapping. Nobody had previously fed the raw
+bytes to a strict parser.
+
+**Recommendation:** this is AWS's bug, not ours - open a support case, with the two
+reproductions above. Until it is fixed, a client either needs a tolerant parser (undo the
+missing escape level) or must accept that this Gateway's `tools/call` responses cannot be
+parsed as standard JSON-RPC. Say so plainly in the blog rather than show a clean transcript
+that implies the real response can be parsed as sent (now done - see "The Gateway's Own Bug").
 
 ### Runbook: stage 2 on another machine
 
@@ -200,8 +248,8 @@ To stop the billing when you are finished for the day: `cd cdk && npx cdk destro
 | Finding | What changed | How it was checked |
 |---|---|---|
 | S3 | The Guardrail call is in `src/memory/guardrail.py`. A masked secret is stored masked. Blocked content raises and returns a 422; the refusal message is never stored. No Guardrail, or an intervention with nothing to store, refuses the write | 7 offline tests |
-| S2 | The private-key rule is `BLOCK` again, so the write is refused. A new rule masks `aws_secret_access_key = ...`. The key ID and the Postgres URI are still masked | Read the template. **Not deployed** |
-| S4, D7 | The PII rules are removed. Shared facts keep their names; secrets are masked or refused | Read the template. **Not deployed** |
+| S2 | The private-key rule is `BLOCK` again, so the write is refused. A new rule masks `aws_secret_access_key = ...`. The key ID and the Postgres URI are still masked | Read the template. **Deployed in stage 2. Not yet exercised live with an actual secret** |
+| S4, D7 | The PII rules are removed. Shared facts keep their names; secrets are masked or refused | Read the template. **Deployed in stage 2 and confirmed: Liam's and Maya's names came back unmasked in every live call** |
 | S7 | The `memory_write` description says "a namespace the caller is a member of" | Read |
 | D1 | A grant opens memory only. It carries the domain's tools only when the request sets `include_tools` and the owner approves it. The owner sees the flag in `list_pending` | Offline tests; the two evals are updated |
 | S10, N4 | Tests for the tools Lambda (11) and the DynamoDB store (6), including the race between two decisions | They need `boto3`. They are skipped without it |
@@ -247,10 +295,10 @@ What needs fixing. None of it is deployed yet, so fix before the deploy:
 
 | Finding | What changed | Commit | How it was checked |
 |---|---|---|---|
-| M1 | Memory is read and written through `memory_search` and `memory_write`, with identity from the verified token. The claims-body path and the body-driven approvals are deleted | `3db97ab` | Read the diff. **No tests. Not deployed** |
-| M2 | Memory is read with a visa: AWS credentials that allow one namespace until the grant ends. The reader's own role cannot read memory | `a280bd5`, `3db97ab` | 11 offline tests. **Not deployed. Not proved against AWS** |
-| M3 (write) | A grant reads and never writes. Only a member writes into a namespace | `451beca` | Offline test |
-| M6 | The Guardrail is called on every write | `ca72969` | Read the diff. **Not deployed.** See S2, S3 and S4 before you rely on it |
+| M1 | Memory is read and written through `memory_search` and `memory_write`, with identity from the verified token. The claims-body path and the body-driven approvals are deleted | `3db97ab` | 11 offline tests (`test_tools_lambda.py`). **Deployed and proved live in stage 2** |
+| M2 | Memory is read with a visa: AWS credentials that allow one namespace until the grant ends. The reader's own role cannot read memory | `a280bd5`, `3db97ab` | 11 offline tests. **Deployed and proved against real AWS in stage 2 (A8): denied a different namespace, denied the same namespace after the window closed** |
+| M3 (write) | A grant reads and never writes. Only a member writes into a namespace | `451beca` | Offline test. **Confirmed live in stage 2 (A9): a write under a grant came back 403** |
+| M6 | The Guardrail is called on every write | `ca72969` | Read the diff. **Deployed in stage 2.** The one live write went through it without masking (plain text, nothing sensitive); S2/S3/S4's fixes are deployed but not yet exercised live with content that should trip them |
 | G2 | A grant is decided once. An expired, denied or revoked grant cannot be approved; approving twice does not move the window; a closed window cannot be revoked | `451beca` | Offline tests on the in-memory store |
 | G2 (race) | The DynamoDB store writes a decision only if the status is still what it read | `451beca` | **Syntax only.** No test covers the DynamoDB store |
 | G2 (limits) | A request needs a reason, and a window of at most 24 hours | `451beca` | Offline tests |
@@ -260,7 +308,9 @@ What needs fixing. None of it is deployed yet, so fix before the deploy:
 
 ### Your action points: fix, deploy and prove
 
-These need your AWS access. Run them from the environment you deploy from.
+**Done 23 November 2026 in stage 2, using Jake's own AWS session.** See "Stage 2: what was
+done" above for the real results. Left below as a record of what was expected at each step -
+every one of them matched.
 
 | # | Action | Command or detail | Expected result |
 |---|---|---|---|
@@ -305,8 +355,8 @@ In this order. Each is one change with its own tests.
 
 | # | Work | Finding | State |
 |---|---|---|---|
-| N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. The claims body and the body-driven approvals removed | M1 | **Done in code** (`3db97ab`). Not deployed |
-| N3 | Apply the guardrail on write | M6 | **Done in code.** S2 and S3 fixed. Not deployed |
+| N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. The claims body and the body-driven approvals removed | M1 | **Done and deployed** (`3db97ab`), proved live in stage 2 |
+| N3 | Apply the guardrail on write | M6 | **Done and deployed.** S2 and S3 fixed. The live write path works; not yet exercised with content that should trip a rule |
 | N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | **Done.** 24 tests |
 | N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the outcome and the grant ID | M4, M10, S9 | To do |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
