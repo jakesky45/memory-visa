@@ -537,15 +537,17 @@
     <p>"Share memory across teams" is not one problem. Asking a person to approve every read does not scale, and letting everyone read everything is the failure this post started with. It helps to name the patterns separately, because each one has a different owner and a different cost:</p>
 
     <table>
-    <thead><tr><th>Pattern</th><th>Who can read</th><th>Who decides</th><th>In this repo</th></tr></thead>
-    <tr><td><strong>Scoped by default</strong></td><td>You, in your own namespace</td><td>Nobody. It is the default</td><td>Live</td></tr>
-    <tr><td><strong>Shared by design</strong></td><td>Your team, in the department's namespace</td><td>Whoever put you in the team</td><td>Live for departments. Project namespaces are in the tests only</td></tr>
-    <tr><td><strong>Published facts</strong></td><td>Everyone in the org</td><td>The domain's owner, once, when publishing</td><td>Live</td></tr>
-    <tr><td><strong>Brokered answers</strong></td><td>Nobody reads; the owning team's agent answers a question</td><td>The owning team's agent and its rules</td><td>Not built</td></tr>
-    <tr><td><strong>The visa</strong></td><td>One person, one namespace, a short time</td><td>The domain's owner, each time</td><td>Live</td></tr>
+    <thead><tr><th>Pattern</th><th>Who can read</th><th>Who decides</th></tr></thead>
+    <tr><td><strong>Scoped by default</strong></td><td>You, in your own namespace</td><td>Nobody. It is the default</td></tr>
+    <tr><td><strong>Shared by design</strong></td><td>Your team, in the department's namespace</td><td>Whoever put you in the team</td></tr>
+    <tr><td><strong>Published facts</strong></td><td>Everyone in the org</td><td>The domain's owner, once, when publishing</td></tr>
+    <tr><td><strong>Brokered answers</strong></td><td>Nobody reads. The owning team's agent answers the question</td><td>The owning team, through its agent's rules</td></tr>
+    <tr><td><strong>The visa</strong></td><td>One person, one namespace, a short time</td><td>The domain's owner, each time</td></tr>
     </table>
 
     <p>The first three carry the volume. The visa is the exception path, and it is the one most teams have not built, so most of this post is about it. The point of the table is the order: if people need a visa every day for the same fact, that fact should have been published.</p>
+
+    <p>This repo builds four of the five. The brokered answer is not built.</p>
 
     <h2 id="what-agentcore-ships">What AgentCore Ships, and Where It Stops</h2>
 
