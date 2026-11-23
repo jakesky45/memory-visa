@@ -10,8 +10,38 @@ everything about the live system comes from the code, the README and the blog.
 
 ## Progress and action points
 
-Updated 23 November 2026, at commit `3db97ab` on `main`. This section is the working list.
+Updated 23 November 2026, after stage 1 of the plan. This section is the working list.
 The findings below it are the review as first written, at commit `49f59ba`.
+
+### The plan
+
+Four stages. Nothing in a later stage is built until the one before it is proven.
+
+| Stage | Goal | Who | State |
+|---|---|---|---|
+| 1. Safe and true | Nothing wrong goes live, and the blog claims nothing that has not run | Claude | **Done.** See "Stage 1" below |
+| 2. Deploy and prove | The visa, proven against AWS | Jake | To do: actions A2 to A10 |
+| 3. A memory demo | An agent in the loop, provenance, search across namespaces, a second way to share | Claude builds, Jake reviews and deploys | After stage 2 |
+| 4. Scale and stage | Queries not scans, measured numbers, claims in the token, the blog and the talk | Both | After stage 3 |
+
+### Stage 1: what was done
+
+| Finding | What changed | How it was checked |
+|---|---|---|
+| S3 | The Guardrail call is in `src/memory/guardrail.py`. A masked secret is stored masked. Blocked content raises and returns a 422; the refusal message is never stored. No Guardrail, or an intervention with nothing to store, refuses the write | 7 offline tests |
+| S2 | The private-key rule is `BLOCK` again, so the write is refused. A new rule masks `aws_secret_access_key = ...`. The key ID and the Postgres URI are still masked | Read the template. **Not deployed** |
+| S4, D7 | The PII rules are removed. Shared facts keep their names; secrets are masked or refused | Read the template. **Not deployed** |
+| S7 | The `memory_write` description says "a namespace the caller is a member of" | Read |
+| D1 | A grant opens memory only. It carries the domain's tools only when the request sets `include_tools` and the owner approves it. The owner sees the flag in `list_pending` | Offline tests; the two evals are updated |
+| S10, N4 | Tests for the tools Lambda (11) and the DynamoDB store (6), including the race between two decisions | They need `boto3`. They are skipped without it |
+| S1 | The blog's new transcripts are labelled as expected output, not a captured run | Read. Replace with real output after stage 2 |
+
+`make eval` now runs 49 tests with `boto3` installed. Without it, 32 run and the two
+modules that need it are skipped, with a message.
+
+Still open from the second review: S5 (the Lambda's AWS SDK version), S6 (project
+namespaces), S8 (a write visa), S9 (the usage log has no outcome), S11 (the dead route in
+the Cedar permit).
 
 ### Second review: commits `ca72969` and `3db97ab`
 
@@ -63,8 +93,8 @@ These need your AWS access. Run them from the environment you deploy from.
 
 | # | Action | Command or detail | Expected result |
 |---|---|---|---|
-| A1 | Fix S2 and S3 first | They decide what is written to memory. Do not deploy the Guardrail call without them | A blocked write returns an error; a private key is never stored |
-| A2 | Check the infrastructure change | `cd cdk && source .venv/bin/activate && cdk diff --all` | A new role `memory-visa-reader`, trusted by the tools Lambda. The tools Lambda gains five environment variables and three permissions: write events, assume the visa role, apply the Guardrail. The runtime role loses memory and table access, and the runtime has no environment variables. Two new tools on the target and in the Cedar permit. `requester_org` leaves the `request_access` schema. Three new parameters. The Guardrail's three regex rules change. Stop if you see anything else |
+| A1 | Pull | `git pull` | S2 and S3 are fixed in the code you deploy |
+| A2 | Check the infrastructure change | `cd cdk && source .venv/bin/activate && cdk diff --all` | A new role `memory-visa-reader`, trusted by the tools Lambda. The tools Lambda gains five environment variables and three permissions: write events, assume the visa role, apply the Guardrail. The runtime role loses memory and table access, and the runtime has no environment variables. Two new tools on the target and in the Cedar permit. `requester_org` leaves the `request_access` schema. Three new parameters. An `include_tools` field on `request_access`. In the Guardrails stack: four regex rules where there were three, and the PII rules removed. Stop if you see anything else |
 | A3 | Find your role ARN | `aws sts get-caller-identity --query Arn --output text` | If it is an `assumed-role` ARN, use the IAM role behind it: `arn:aws:iam::<account>:role/<name>` |
 | A4 | Deploy, with your role allowed to run the proof | `cdk deploy --all -c visaDemoPrincipalArn=<ARN from A3>` | The stacks update |
 | A5 | Rebuild and push the orchestrator image | `server.py` changed, and the stack names the image by digest, so update the digest | The runtime answers `/ping` |
@@ -89,13 +119,14 @@ If the proof does not match:
 
 | # | Decision | Why it is yours | My recommendation |
 |---|---|---|---|
-| D1 | Does a grant still carry the domain's tools? | The blog now says so on purpose: read-only memory, and the whole toolset. `allowed_tools` returns the owner's tools, including the write tool `log_compliance_note` | Take tools out of the grant by default. Offer them as a named scope the approver sees |
+| D1 | Does a grant still carry the domain's tools? | **Decided: not by default.** A request may ask for them with `include_tools` | |
 | D2 | Is 24 hours the right longest window? | It is a constant, `MAX_GRANT_DURATION`. I chose it | Keep it, or set it for each domain |
 | D3 | Does `REVIEW.md` go into the public repository? | **Decided: yes.** Published in `4605991` | |
-| D4 | The thesis of the talk and the next post (B1) | It decides what is built next | "Isolated by default, shareable on purpose": five patterns, with the visa as the exception path |
+| D4 | The thesis of the talk and the next post (B1) | **Decided:** "isolated by default, shareable on purpose". Five patterns, with the visa as the exception path | |
 | D5 | The tone toward AgentCore (B5) | It is your voice on an AWS stage | Present it as the layer you add on top, not as where the platform stops |
 | D6 | Verify three facts before they are said on stage (B4) | I could not confirm them | The name "Dogwood"; the AWS security blog and its date; the AgentCore and Bedrock Agents dates |
-| D7 | What may memory hold? (S4) | Masking names changes what shared memory is for | Keep names in department and project memory. Mask secrets everywhere |
+| D7 | What may memory hold? (S4) | **Decided:** names stay; secrets are masked or refused | |
+| D8 | When is the Summit, and how long is the slot? | It decides how much of stages 3 and 4 is realistic | |
 
 ### Next to build
 
@@ -104,8 +135,8 @@ In this order. Each is one change with its own tests.
 | # | Work | Finding | State |
 |---|---|---|---|
 | N1 | `memory_search` and `memory_write` as MCP tools behind the interceptor. The claims body and the body-driven approvals removed | M1 | **Done in code** (`3db97ab`). Not deployed |
-| N3 | Apply the guardrail on write | M6 | **Done in code** (`ca72969`). Fix S2 and S3 |
-| N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | To do. Three fixes are checked by reading only |
+| N3 | Apply the guardrail on write | M6 | **Done in code.** S2 and S3 fixed. Not deployed |
+| N4 | Tests for the DynamoDB store, the tools Lambda, the claims builder and the Guardrail function | Tests, S10 | **Done.** 24 tests |
 | N2 | Results carry provenance: record ID, namespace, author, time, score. Reads go to the audit table with the outcome and the grant ID | M4, M10, S9 | To do |
 | N5 | Queries in place of table scans; `expires_at` stored; expiry emitted on time | G1, G3 | To do, after N4. Every `memory_search` now scans the grants table |
 | N6 | An agent that calls a model and uses memory in a conversation | Scale | To do. `server.py` is kept as the place for it |
@@ -123,7 +154,8 @@ The blog was updated in `3db97ab`. What changed, and what is still open:
 | The Cognito row now says the access tokens carry no custom claims | Fixed. This was a contradiction in B3 |
 | "For Memory, a grant is read-only" | Fixed, and correct |
 | The memory section describes the tools and the deleted claims-body path | Correct, and a good story: say what was wrong and that it is gone |
-| The `memory_write`, `memory_search` and `tools/list` transcripts | **Not real.** See S1 |
+| The `memory_write`, `memory_search` and `tools/list` transcripts | Labelled as expected output. Replace with real output after stage 2 |
+| Jordan's `whoami` transcript shows Engineering's tools under his grant | True only for a request with `include_tools`. His `request_access` line in the post does not show it. Update both when the transcripts are re-run |
 | "a log line records who asked" | Correct, and the caveat about the audit table is right |
 | Nothing about AWS enforcing the boundary | Still missing. Add it once A8 passes: "the boundary and the expiry are enforced by IAM, not by our code" |
 | "built on Cedar"; "GrantStore backing ordinary Cedar ABAC" | Still not accurate (B3, C1) |

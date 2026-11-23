@@ -23,12 +23,14 @@ class GuardrailsStack(Stack):
             blocked_outputs_messaging="This response contains content that can't be returned.",
             sensitive_information_policy_config=bedrock.CfnGuardrail.SensitiveInformationPolicyConfigProperty(
                 regexes_config=[
-                    # ANONYMIZE, not BLOCK: BLOCK on a sensitive-information filter
-                    # rejects the whole message and substitutes the blocked_input_messaging
-                    # string in its place, which isn't redaction - it's refusal. ANONYMIZE
-                    # replaces just the matched span, keeping the rest of the text, which is
-                    # what "redact an AWS access key... before anything reaches memory"
-                    # above actually means.
+                    # Two actions, on purpose (src/memory/guardrail.py handles both):
+                    #
+                    # ANONYMIZE masks the matched text and keeps the rest. Right when the
+                    # pattern covers the whole secret, so nothing sensitive is left behind.
+                    #
+                    # BLOCK refuses the whole write. Right when the pattern can only find
+                    # the START of a secret: masking a private key's header line would
+                    # store the key itself.
                     bedrock.CfnGuardrail.RegexConfigProperty(
                         name="aws-access-key",
                         pattern=r"AKIA[0-9A-Z]{16}",
@@ -36,10 +38,16 @@ class GuardrailsStack(Stack):
                         description="AWS access key ID",
                     ),
                     bedrock.CfnGuardrail.RegexConfigProperty(
+                        name="aws-secret-access-key",
+                        pattern=r"aws_secret_access_key\s*[=:]\s*\S+",
+                        action="ANONYMIZE",
+                        description="AWS secret access key assignment, the value that usually follows a key ID",
+                    ),
+                    bedrock.CfnGuardrail.RegexConfigProperty(
                         name="private-key-block",
                         pattern=r"-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----",
-                        action="ANONYMIZE",
-                        description="PEM-format private key header",
+                        action="BLOCK",
+                        description="PEM-format private key header: the key follows it, so the write is refused",
                     ),
                     bedrock.CfnGuardrail.RegexConfigProperty(
                         name="postgres-uri",
@@ -48,10 +56,10 @@ class GuardrailsStack(Stack):
                         description="Postgres connection string with embedded credentials",
                     ),
                 ],
-                pii_entities_config=[
-                    bedrock.CfnGuardrail.PiiEntityConfigProperty(type="EMAIL", action="ANONYMIZE"),
-                    bedrock.CfnGuardrail.PiiEntityConfigProperty(type="PHONE", action="ANONYMIZE"),
-                    bedrock.CfnGuardrail.PiiEntityConfigProperty(type="NAME", action="ANONYMIZE"),
-                ],
+                # No PII rules. This memory is an organisation's shared knowledge, and a fact
+                # needs its names: who approved, which supplier, who to ask. Masking names,
+                # emails and phone numbers would return "{NAME} is banned under 7A994".
+                # Secrets are masked or refused everywhere; personal data rules, if a
+                # namespace needs them, belong to that namespace.
             ),
         )

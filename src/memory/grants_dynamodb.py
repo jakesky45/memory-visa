@@ -35,6 +35,7 @@ def _to_item(grant: Grant) -> dict:
         "status": grant.status.value,
         "approved_by": grant.approved_by or "",
         "approved_at": grant.approved_at.isoformat() if grant.approved_at else "",
+        "include_tools": grant.include_tools,
     }
 
 
@@ -49,6 +50,7 @@ def _from_item(item: dict) -> Grant:
         status=GrantStatus(item["status"]),
         approved_by=item["approved_by"] or None,
         approved_at=dt.datetime.fromisoformat(item["approved_at"]) if item["approved_at"] else None,
+        include_tools=bool(item.get("include_tools", False)),  # absent on grants made before the field existed
     )
 
 

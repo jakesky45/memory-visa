@@ -60,6 +60,7 @@ from agents.domain_config import allowed_tools
 from memory.agentcore_backend import AgentCoreMemoryBackend
 from memory.grants import GrantNotFoundError, InvalidTransitionError
 from memory.grants_dynamodb import DynamoGrantStore
+from memory.guardrail import ContentBlockedError, apply_guardrail
 from memory.guarded_memory import (
     GuardedMemory,
     PermissionError as GuardedMemoryPermissionError,
@@ -83,22 +84,10 @@ _bedrock_runtime = boto3.client("bedrock-runtime", region_name=_REGION) if _GUAR
 
 
 def _apply_guardrail(text: str) -> str:
-    """Runs a memory_write through the real Bedrock Guardrail (ANONYMIZE, not
-    BLOCK - see guardrails_stack.py) before it reaches Memory. Moved here from
-    src/server.py's Tier One, which this replaces. Falls back to the raw text
-    if no guardrail is configured, rather than refusing the write outright."""
-    if _bedrock_runtime is None:
-        return text
-    response = _bedrock_runtime.apply_guardrail(
-        guardrailIdentifier=_GUARDRAIL_ID,
-        guardrailVersion=_GUARDRAIL_VERSION,
-        source="INPUT",
-        content=[{"text": {"text": text}}],
-    )
-    if response.get("action") != "GUARDRAIL_INTERVENED":
-        return text
-    redacted = "".join(output.get("text", "") for output in response.get("outputs", []))
-    return redacted or text
+    """Every memory_write passes the Bedrock Guardrail first (memory/guardrail.py).
+    A masked secret is stored masked; blocked content, or content that cannot be
+    checked, is refused with ContentBlockedError."""
+    return apply_guardrail(_bedrock_runtime, _GUARDRAIL_ID, _GUARDRAIL_VERSION, text)
 
 
 # Reads go through a visa: credentials AWS limits to one namespace until the
@@ -147,6 +136,7 @@ def _grant_to_dict(grant) -> dict:
         "duration_hours": grant.duration.total_seconds() / 3600,
         "approved_by": grant.approved_by,
         "approved_at": grant.approved_at.isoformat() if grant.approved_at else None,
+        "include_tools": grant.include_tools,
     }
 
 
@@ -165,6 +155,7 @@ def _request_access(args: dict) -> dict:
         reason=args["reason"],
         duration=dt.timedelta(hours=float(args["duration_hours"])),
         now=dt.datetime.now(dt.timezone.utc),
+        include_tools=bool(args.get("include_tools", False)),
     )
     return _grant_to_dict(grant)
 
@@ -307,6 +298,8 @@ def handler(event, context):
         return {"statusCode": 400, "body": json.dumps({"error": str(exc)})}
     except InvalidTransitionError as exc:
         return {"statusCode": 409, "body": json.dumps({"error": str(exc)})}
+    except ContentBlockedError as exc:
+        return {"statusCode": 422, "body": json.dumps({"error": str(exc)})}
     except (NotDomainOwnerError, UnverifiedCallerError, GuardedMemoryPermissionError) as exc:
         return {"statusCode": 403, "body": json.dumps({"error": str(exc)})}
     except GrantNotFoundError as exc:

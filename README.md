@@ -9,7 +9,7 @@ Static isolation keeps two organizations' - or two departments' - AI agents apar
 1. Robotinc's departments (Engineering, Legal, Finance) each get their own AgentCore Memory namespace and toolset by default - Cedar policy and Cognito JWT claims, nothing custom.
 2. When someone needs a real exception - Maya (Engineering) needs an export-control fact from Legal's files before a shipment - she calls `request_access` with a reason and a duration.
 3. Legal's real domain owner (Liam) approves or denies it from his own AI client - no bespoke UI, just an MCP tool call he can already make.
-4. Within the window, both the Memory namespace and that domain's toolset open up for the requester. Past it, access reverts on its own - no manual cleanup step.
+4. Within the window, the Memory namespace opens for the requester, to read - never to write. The domain's tools come with it only if the request asked for them and the owner approved that. Past the window, access reverts on its own - no manual cleanup step.
 5. Every transition is audited: who requested, who approved, when it expired. A DynamoDB Streams trigger is wired up to notify both the owner and the requester on each write, once a Slack webhook is configured - it isn't yet.
 6. A sixth tool, `whoami`, reports a caller's own effective access live: static namespaces, any active grant, and the domain toolset that grant carries.
 
@@ -25,12 +25,14 @@ Cedar policies and Cognito JWT claims handle static org/department isolation - t
 
 Offline, `make eval` runs six properties end to end against fakes: cross-org isolation, within-org silo enforcement, legitimate cross-team flow, credential scrubbing, and the full grant lifecycle for both an employee and a contractor whose default access starts narrower.
 
+`make eval` also runs the tests around those properties: the grant rules, the visa credentials, the Guardrail handling, the DynamoDB store and the tools Lambda. The last two need `boto3` installed and are skipped without it; none of them calls AWS.
+
 Deployed in the sandbox account, `eu-west-2`:
 
 | Resource | Status | Notes |
 |---|---|---|
 | VPC + flow logs | live | |
-| Bedrock Guardrail | resource live, call path not yet deployed | the regex rules redact (ANONYMIZE), not block - but nothing in `server.py` actually called `ApplyGuardrail` until this was caught; now wired up in code (IAM permission, env vars, real API call), not yet deployed or verified against AWS |
+| Bedrock Guardrail | resource live, call path not yet deployed | every `memory_write` passes it first: a secret is masked, a private key refuses the whole write, and content that cannot be checked is not stored (`src/memory/guardrail.py`). No PII rules - shared facts keep their names. In code and tested offline; not yet deployed or verified against AWS |
 | Cognito pool + domain | live | custom `department`/`org` claims, both OAuth flows configured |
 | AgentCore PolicyEngine | `ACTIVE` | one `permit` baseline, one `forbid` kept at `LOG_ONLY` (see below) |
 | AgentCore Gateway | `READY` | `CUSTOM_JWT` auth; `IdentityInterceptor` resolves real Cognito identity before every tool call |
@@ -114,6 +116,9 @@ cdk destroy --all
 | `src/memory/grants_dynamodb.py` | same interface, DynamoDB-backed - what the MCP tools actually use |
 | `src/memory/guarded_memory.py` | the RBAC gate |
 | `src/memory/agentcore_backend.py` | the real AgentCore Memory client |
+| `src/memory/visa_credentials.py` | the visa as a credential: reads use AWS credentials limited to one namespace until the grant ends |
+| `src/memory/guardrail.py` | what a write may store after the Guardrail has seen it |
+| `demo/visa_credentials_demo.py` | the live proof that AWS refuses a read outside the namespace or after the window |
 | `src/agents/domain_config.py` | per-role toolset, grant-aware |
 | `src/agents/domain_owners.py` | per-org approval authority |
 | `src/agents/access_requests.py` | request/approve/deny logic |

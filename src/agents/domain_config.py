@@ -5,9 +5,10 @@ it" - tools outside the current allowed set are never registered on the
 agent for this invocation at all, so the model has nothing to be talked into
 misusing.
 
-A grant into a domain is a full visa, not a partial one: it carries that
-domain's normal toolset and memory namespace together, for the duration of
-the grant. There's no separate partial-tool-grant concept to reason about.
+A grant into a domain opens that domain's memory, to read. It carries the
+domain's toolset only when the request asked for it (`include_tools`) and the
+owner approved that request - reading what Legal knows and acting as Legal are
+different things, and the owner should see which one they are approving.
 """
 from __future__ import annotations
 
@@ -46,6 +47,8 @@ def allowed_tools(claims: UserClaims, grant_store: GrantStore, now: dt.datetime)
         tools |= DOMAIN_TOOLS.get(department, set())
 
     for grant in grant_store.active_grants_for(requester_namespace(claims), now):
+        if not grant.include_tools:
+            continue
         domain = _namespace_domain(grant.target_namespace)
         if domain is not None:
             tools |= DOMAIN_TOOLS.get(domain, set())

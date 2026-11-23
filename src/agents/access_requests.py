@@ -36,6 +36,7 @@ def request_cross_domain_access(
     reason: str,
     duration: dt.timedelta,
     now: dt.datetime,
+    include_tools: bool = False,
 ) -> Grant:
     """Called by the requester's agent after a PermissionError on that namespace."""
     if not reason or not reason.strip():
@@ -51,6 +52,7 @@ def request_cross_domain_access(
         reason=reason,
         requested_at=now,
         duration=duration,
+        include_tools=include_tools,
     )
     return grants.request(grant)
 

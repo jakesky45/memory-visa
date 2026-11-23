@@ -545,7 +545,7 @@
 
     <h2 id="what-a-grant-unlocks">What a Grant Actually Unlocks (And a Bug We Caught Testing It)</h2>
 
-    <p>Scoped precisely: for Memory, a grant is read-only - <code>retrieve</code> into the target namespace, never <code>put</code>. A grant is never a license to write into someone else's domain as if you were a member of it; only a member writes into a namespace. It does still carry the target domain's whole toolset alongside that read access, which is a separate, broader thing - more on that below. Robotinc also has one real department-scoped tool behind the Gateway, Engineering's <code>check_shipping_classification</code> (a stub that looks up a shipment's export-control status). Testing it live turned up a real bug, not just a gap:</p>
+    <p>Scoped precisely: for Memory, a grant is read-only - <code>retrieve</code> into the target namespace, never <code>put</code>. A grant is never a license to write into someone else's domain as if you were a member of it; only a member writes into a namespace. It carries the target domain's tools only when the request asks for them (<code>include_tools</code>) and the owner approves that request - reading what Legal knows and acting as Legal are different things, and the owner sees which one is being asked for. Robotinc also has one real department-scoped tool behind the Gateway, Engineering's <code>check_shipping_classification</code> (a stub that looks up a shipment's export-control status). Testing it live turned up a real bug, not just a gap:</p>
 
     <ol>
     <li>A Cedar policy exists to gate it by the caller's <code>department</code> tag, but it was sitting in <code>LOG_ONLY</code> mode - evaluating and logging, never actually blocking anyone.</li>
@@ -555,7 +555,7 @@
 
     <p>It's back in <code>LOG_ONLY</code> now, reported honestly as such rather than left claiming a gate that doesn't work. <code>GrantStore</code> never touched this policy either way - that part was true all along.</p>
 
-    <p>That's one tool, and it turned out to be effectively unenforced. Separately, the project's own toolset model is grant-aware by design and actually works as built - a grant into a domain carries that domain's whole toolset alongside its Memory namespace, not Memory alone:</p>
+    <p>That's one tool, and it turned out to be effectively unenforced. Separately, the project's own toolset model is grant-aware by design and actually works as built - a grant that asks for a domain's tools carries that domain's whole toolset alongside its Memory namespace; a plain grant opens Memory alone:</p>
 
     <table>
     <thead><tr><th>Department</th><th>Tools</th><th>Who has them with no grant</th></tr></thead>
@@ -577,7 +577,7 @@
     <li>Fixing that uncovered a second issue: extraction filed records under AWS's default namespace template (<code>/strategies/{strategyId}/actors/{actorId}/</code>), while this project's <code>retrieve()</code> queries the plain namespace string directly (<code>org_robotinc_dept_legal</code>). Two paths that never intersected. Overriding the strategy's namespace to <code>{actorId}</code> fixed it without touching a line of application code.</li>
     </ol>
 
-    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, same as <code>request_access</code> through <code>whoami</code> - discovered via <code>tools/list</code>, identity from <code>IdentityInterceptor</code>'s token resolution, never an argument a caller supplies. They didn't start that way: the first version of this demo put memory access behind a plain HTTP passthrough target that trusted a <code>claims</code> dict in the request body - org, department, email, whatever the caller typed. Anyone holding a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is gone, not patched: the orchestrator behind it is now a bare <code>/ping</code> health check with no memory or grant logic left to call. With both extraction bugs fixed and memory access now a real tool, here's the actual scenario from the top of this post, run for real. Liam writes the fact Maya needs:</p>
+    <p><code>memory_search</code> and <code>memory_write</code> are MCP tools, same as <code>request_access</code> through <code>whoami</code> - discovered via <code>tools/list</code>, identity from <code>IdentityInterceptor</code>'s token resolution, never an argument a caller supplies. They didn't start that way: the first version of this demo put memory access behind a plain HTTP passthrough target that trusted a <code>claims</code> dict in the request body - org, department, email, whatever the caller typed. Anyone holding a Gateway token could read or write as anyone else, or approve their own request as Liam. That path is gone, not patched: the orchestrator behind it is now a bare <code>/ping</code> health check with no memory or grant logic left to call. With both extraction bugs fixed and memory access now a real tool, here's the scenario from the top of this post. <strong>These two calls show the expected output, not a captured run:</strong> the tools are in the code and tested offline, but have not been called against the deployed stack yet. The fact and the search results are from the earlier run through the old path. Liam writes the fact Maya needs:</p>
 
     <pre><code>{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
      "params": {"name": "AccessRequestTools___memory_write",
@@ -838,7 +838,7 @@
       --auth-parameters USERNAME=maya,PASSWORD='&lt;temporary-password&gt;' \
       --query AuthenticationResult.AccessToken --output text)</code></pre>
 
-    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly is the proof, not the claim - all eight tools, now scoped to Maya specifically instead of the shared service credential:</p>
+    <p>That access token is what goes in an MCP client's config as the bearer token for the Gateway's <code>/mcp</code> endpoint. Calling <code>tools/list</code> with it directly lists the tools, scoped to Maya specifically instead of the shared service credential. Six were listed in the last live run; <code>memory_search</code> and <code>memory_write</code> are the expected additions once this version is deployed:</p>
 
     <pre><code>curl -s -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \

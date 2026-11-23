@@ -121,11 +121,12 @@ def test_eval4_controlled_cross_domain_switching():
     t_approved = T0 + dt.timedelta(minutes=5)
     grants.approve(grant.grant_id, approved_by="liam@robotinc.example", now=t_approved)
 
-    # 4. Within the window, both the memory namespace and Legal's toolset open up.
+    # 4. Within the window, the memory namespace opens, to read. Legal's tools do not:
+    # she asked to read what Legal knows, not to act as Legal.
     t_in_window = t_approved + dt.timedelta(hours=1)
     results = memory.retrieve(maya, liam_namespace, "export control", t_in_window)
     assert any("7A994" in r["text"] for r in results)
-    assert "search_contracts" in allowed_tools(maya, grants, t_in_window)
+    assert "search_contracts" not in allowed_tools(maya, grants, t_in_window)
 
     # 5. Past the window, it reverts with no manual cleanup - same denial as step 1.
     t_expired = t_approved + dt.timedelta(hours=3)
@@ -171,6 +172,7 @@ def test_eval5_contractor_has_a_narrower_default_than_an_employee():
             reason="Need Atlas-v1 firmware history for a backward-compatibility check on the new arm module.",
             requested_at=T0,
             duration=dt.timedelta(hours=4),
+            include_tools=True,  # he asks for Engineering's tools too, and Maya sees that she is approving it
         )
     )
 
@@ -178,8 +180,8 @@ def test_eval5_contractor_has_a_narrower_default_than_an_employee():
     t_approved = T0 + dt.timedelta(minutes=10)
     grants.approve(grant.grant_id, approved_by="maya@robotinc.example", now=t_approved)
 
-    # 4. Within the window, Jordan gets Engineering's namespace and toolset -
-    # a full visa for the domain, not a partial one, same as the employee case.
+    # 4. Within the window, Jordan gets Engineering's namespace and, because this
+    # request asked for them and Maya approved it, Engineering's tools as well.
     t_in_window = t_approved + dt.timedelta(hours=2)
     results = memory.retrieve(jordan, engineering_namespace, "legacy PWM interface", t_in_window)
     assert any("PWM" in r["text"] for r in results)

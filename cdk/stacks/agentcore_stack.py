@@ -511,7 +511,10 @@ class AgentCoreStack(Stack):
         _ACCESS_REQUEST_TOOL_SCHEMAS = [
             agentcore.CfnGatewayTarget.ToolDefinitionProperty(
                 name="request_access",
-                description="Request time-boxed access into another org/department's memory namespace and toolset.",
+                description=(
+                    "Request time-boxed, read-only access into another org/department's memory namespace. "
+                    "Set include_tools to also ask for that domain's tools; the owner sees which was asked for."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -519,6 +522,7 @@ class AgentCoreStack(Stack):
                         "target_department": {"type": "string"},
                         "reason": {"type": "string"},
                         "duration_hours": {"type": "number"},
+                        "include_tools": {"type": "boolean"},
                     },
                     "required": ["target_org", "target_department", "reason", "duration_hours"],
                 },
@@ -586,9 +590,9 @@ class AgentCoreStack(Stack):
             agentcore.CfnGatewayTarget.ToolDefinitionProperty(
                 name="memory_write",
                 description=(
-                    "Write a fact into the caller's own Memory namespace, through the Guardrail first. "
-                    "A grant never allows a write, only a read - this always writes to the caller's own "
-                    "namespace, regardless of any grant they hold into someone else's."
+                    "Write a fact into a Memory namespace the caller is a member of (their own, or their "
+                    "department's), through the Guardrail first. A grant never allows a write, only a read. "
+                    "Content the Guardrail blocks is refused, not stored."
                 ),
                 input_schema={
                     "type": "object",

@@ -32,6 +32,10 @@ class Grant:
     status: GrantStatus = GrantStatus.PENDING
     approved_by: str | None = None
     approved_at: dt.datetime | None = None
+    # Whether the grant also carries the target domain's tools. Off unless the request
+    # asks for it, so the owner approves "read Legal's memory" and "use Legal's tools"
+    # as two different things.
+    include_tools: bool = False
 
     def is_active(self, now: dt.datetime) -> bool:
         if self.status != GrantStatus.APPROVED or self.approved_at is None:
