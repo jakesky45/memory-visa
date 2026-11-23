@@ -6,16 +6,11 @@ Gateway checks the token, the interceptor adds the verified identity, and the to
 Lambda applies the grant, the Guardrail and the visa. A token that is not valid is
 refused by the Gateway, not by code here.
 
-Found running this live, 23 November 2026: the interceptor only resolves the
-caller's verified identity over HTTP/2. The exact same token, same headers, same
-body, over HTTP/1.1, comes back "no verified identity on this call - ... not the
-shared service credential" - confirmed with curl --http1.1 vs --http2 on an
-otherwise identical request, so this is not a urllib quirk. Every tool call needs
-a real HTTP/2 client; the standard library's urllib cannot speak HTTP/2 at all, so
-`httpx[http2]` sends the real request (imported lazily, only on that path).
-`urllib.request.Request` is still used to build the request and is still the
-injection point for tests (an `opener`), so the offline tests need no network
-library at all, httpx included.
+Standard library only, so the offline tests need no SDK. An earlier version of this
+file sent requests over HTTP/2 via httpx, having wrongly concluded that was required
+(REVIEW.md U6/U8): the real cause was identity_interceptor.py looking up the
+Authorization header in lower case only, which only HTTP/2 clients send that way.
+Fixed there; this client went back to urllib, confirmed live over plain HTTP/1.1.
 """
 from __future__ import annotations
 
@@ -80,51 +75,12 @@ def _read_tool_result(result: dict) -> ToolResult:
     return ToolResult(fallback_status, payload)
 
 
-class _Http2Response:
-    """Wraps an httpx response as the context-manager-with-.read() shape
-    urllib.request.urlopen returns, so _rpc doesn't need to know which sent it."""
-
-    def __init__(self, response) -> None:
-        self._response = response
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc) -> bool:
-        return False
-
-    def read(self) -> bytes:
-        return self._response.content
-
-
-def _http2_open(request: urllib.request.Request, timeout: float) -> _Http2Response:
-    """The real transport. Lazy import: offline tests inject their own `opener`
-    and never reach this, so they need no network library installed."""
-    import httpx
-
-    client = httpx.Client(http2=True, timeout=timeout)
-    try:
-        response = client.request(
-            request.get_method(),
-            request.full_url,
-            content=request.data,
-            headers=dict(request.header_items()),
-        )
-    except httpx.HTTPError as exc:
-        raise urllib.error.URLError(str(exc)) from exc
-    finally:
-        client.close()
-    if response.is_error:
-        raise urllib.error.HTTPError(request.full_url, response.status_code, response.reason_phrase, dict(response.headers), None)
-    return _Http2Response(response)
-
-
 class GatewayClient:
     def __init__(self, mcp_url: str, access_token: str, timeout: float = 30.0, opener=None) -> None:
         self._url = mcp_url
         self._token = access_token
         self._timeout = timeout
-        self._open = opener or _http2_open
+        self._open = opener or urllib.request.urlopen
         self._next_id = 0
 
     def _rpc(self, method: str, params: dict) -> dict:

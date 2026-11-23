@@ -42,13 +42,14 @@ The three live checks above are done (T3, T4, S12) - see each row for the result
 
 ### What now
 
-The agent is built. It cannot be shown until a model can be called. So the plan has two
-tracks: Jake unblocks the model, and Claude builds what does not need a model.
+The agent is built, deployed, and proven as far as it can be without a model it's allowed
+to call. So the plan has two tracks: Jake unblocks the model, and Claude builds what does
+not need one.
 
 | Order | Who | What | Where |
 |---|---|---|---|
-| 1 | Jake | On the other machine: do not push. Run `git fetch origin && git reset --hard origin/main` (the history was rewritten, U9) | "Fourth review" |
-| 2 | Jake | Deploy, then run the HTTP/1.1 check (U8) | "Fourth review" |
+| 1 | Claude | ~~On the other machine: `git fetch origin && git reset --hard origin/main`~~ **Done** | "Fourth review" |
+| 2 | Claude | ~~Deploy, then run the HTTP/1.1 check (U8)~~ **Done, 23 November 2026: closed, and U6 corrected to the real cause** | "Fourth review" |
 | 3 | Jake | Unblock a model. Ask the Organization's administrator for a policy exception and for access to Claude Opus 5.5 or Sonnet 5.5 in `eu-west-2`. If that will take more than a few days, use a personal AWS account for the demo | U2/U3 |
 | 4 | Jake | Meanwhile, prove the agent with an API key: `demo/agent_chat.py --provider anthropic`, runbook steps 3 and 4 | "Stage 3: the agent" |
 | 5 | Jake | Say when the Summit is and how long the slot is (D8) | "Your decisions" |
@@ -64,7 +65,7 @@ findings, one fixed in code, one not ours to fix.
 
 | # | Severity | Finding | Fix |
 |---|---|---|---|
-| U6 | High | **A caller on HTTP/1.1 gets no verified identity.** The same token, headers and body work over HTTP/2 and fail over HTTP/1.1 with `403 "no verified identity on this call"` (`curl --http1.1` against `--http2`). The first record of this said the Gateway resolves identity only over HTTP/2. The more likely cause is in this project: `identity_interceptor.py` looked up the header as `authorization`, lower case only. HTTP/2 clients send header names in lower case. HTTP/1.1 clients send `Authorization`, so the lookup found nothing. Any HTTP/1.1 MCP client would fail, not only this one | **Fixed in two places.** `gateway_client.py` sends over HTTP/2 with `httpx[http2]` (deployed, confirmed live: `whoami` resolves Maya). The interceptor now reads the header in any case (two tests). **The cause is not proven until the interceptor is deployed:** then `curl --http1.1` must return the identity. See U8 |
+| U6 | High | **A caller on HTTP/1.1 got no verified identity.** The same token, headers and body worked over HTTP/2 and failed over HTTP/1.1 with `403 "no verified identity on this call"`. The cause was in this project, not the Gateway: `identity_interceptor.py` looked up the header as `authorization`, lower case only. HTTP/2 clients send header names in lower case; HTTP/1.1 clients send `Authorization`, so the lookup found nothing. Any HTTP/1.1 MCP client would have failed, not only this one. **The first record of this blamed the Gateway's HTTP/2 requirement - wrong. See U8**, which is how that got caught | **Fixed in the interceptor** (case-insensitive lookup, two tests). Deployed and confirmed 23 November 2026: the exact U8 check, `curl --http1.1`, now returns Maya's real identity. `gateway_client.py` went back to the standard library and the image was rebuilt without `httpx` - the HTTP/2 workaround was never the real fix, and keeping it once the interceptor was fixed would have been needless complexity for no remaining reason |
 | U2/U3 | High | **No Claude model can be called from this account. There are two different refusals, and they may have two causes.** (1) The inference-profile IDs (`eu.` and `global.`, Opus, Sonnet and Haiku 5.5, and the 4.5 generation) are refused with `"not authorized to perform: bedrock:InvokeModel ... with an explicit deny in a service control policy"`. The policy belongs to the managing AWS Organization, so `AdministratorAccess` in the sandbox account cannot see or change it. (2) The plain ID `anthropic.claude-opus-5-5` is refused with `"not available for this account... contact AWS Sales"`. That is model access, not the policy. The agent uses the second path (`bedrock-mantle:CreateInference`, not `bedrock:InvokeModel`), so lifting the policy alone may not be enough | **Not ours to fix in code.** Ask the Organization's administrator for two things: an exception to the policy for this account, and access to Claude Opus 5.5 (or Sonnet 5.5) in `eu-west-2`. Until then, `demo/agent_chat.py --provider anthropic` runs the same agent against the Claude API with an API key, so U1 can be settled. U3 is still not reached |
 | U4 | - | **Answered.** The Gateway path to the Runtime is `{gateway_url}/{TargetName}/invocations` - `/Orchestrator/invocations` here, not `/invocations` alone (that form reaches the Gateway but finds no target named "invocations"). Confirmed: with the fix above deployed, a call to this URL reaches the container, resolves Maya's identity correctly, and fails only at the model call - the same SCP-driven `NotFoundError` AnthropicBedrockMantle gives (its error reporting differs from the classic client's, but the cause is the same SCP) | Use this URL in the runbook, not `/invocations` |
 | U5 | - | **Answered.** `cdk diff` and `cdk deploy` both ran clean, twice (once for N6, once for the U6 fix). The diff matched what N6 predicted: two new Runtime role statements, `MODEL_ID`, the new image digest, the new target description | None |
@@ -78,10 +79,10 @@ Two more points from reading this run:
 
 | # | Severity | Finding | Fix |
 |---|---|---|---|
-| U8 | Medium | **The HTTP/2 conclusion was recorded before the cause was found** (the same pattern as S12). The header lookup explains the result without any Gateway behaviour | Deploy the interceptor fix, then run the check below. If HTTP/1.1 now returns the identity, say so in U6 and the client can go back to the standard library |
+| U8 | Medium | **The HTTP/2 conclusion was recorded before the cause was found** (the same pattern as S12). The header lookup explains the result without any Gateway behaviour | **Confirmed, 23 November 2026.** Deployed the interceptor fix, ran the exact check below: Maya's real identity came back over plain `curl --http1.1`. Closed - see U6 |
 | U9 | Medium | **The managing Organization's account ID and policy ID were in this public file** (the same rule as T2) | Removed from this file and from the git history, with the sandbox account ID (T2). The history from stage 2 onward was rewritten and force-pushed on 23 November 2026, so the commit IDs changed. GitHub can still serve the old commits by their full ID until it removes them: ask GitHub Support to do that, or delete the repository and push it again |
 
-The U8 check, after `cdk deploy MemoryVisaAgentCore`:
+The U8 check, run after `cdk deploy MemoryVisaAgentCore`:
 
 ```bash
 curl -s --http1.1 -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $MAYA" \
@@ -89,7 +90,8 @@ curl -s --http1.1 -X POST "$GATEWAY_URL/mcp" -H "Authorization: Bearer $MAYA" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"AccessRequestTools___whoami","arguments":{}}}'
 ```
 
-Expected result: Maya's email in the answer, not `no verified identity`.
+**Run 23 November 2026: `statusCode: 200`, Maya's real identity, over plain HTTP/1.1.** U8
+and U6 are both closed.
 
 On U7: the Anthropic SDK retries a failed call twice at most, and it does not retry a 404.
 Dozens of model calls for one request means something outside this code sent the request
@@ -105,12 +107,12 @@ Decided 23 November 2026: D9 is option A, and D10 is Claude Opus 5.5 on Amazon B
 | File | What it does |
 |---|---|
 | `src/agents/chat_agent.py` | The agent. It calls the model with the Anthropic SDK's Bedrock client (`AnthropicBedrockMantle`, model `anthropic.claude-opus-5-5`, set by `MODEL_ID`). It has four tools from the Gateway: `whoami`, `memory_search`, `memory_write`, `request_access`. It cannot approve, deny or revoke |
-| `src/agents/gateway_client.py` | A small MCP client. It sends the user's own token to the Gateway and returns the tool's status, so a 403 reaches the model as a refusal. Sends over HTTP/2 (`httpx`) - the Gateway's interceptor does not resolve identity over HTTP/1.1 (U6) |
+| `src/agents/gateway_client.py` | A small MCP client, standard library only. It sends the user's own token to the Gateway and returns the tool's status, so a 403 reaches the model as a refusal |
 | `src/server.py` | `POST /invocations` with `{"prompt", "access_token", "session_id"}`. It does not read the token. It passes it to the Gateway. One conversation per session and verified email |
 | `demo/agent_chat.py` | Talk to the agent from a terminal. Each memory call is printed under the reply. `/new` starts a new conversation |
 | `tests/test_chat_agent.py` | 17 tests with a fake model and a fake Gateway |
 | `cdk/stacks/agentcore_stack.py` | The Runtime role may call the model and read one parameter (the Gateway URL). `MODEL_ID` on the Runtime. No memory permission |
-| `Dockerfile` | Installs `anthropic[bedrock]` and `httpx[http2]` |
+| `Dockerfile` | Installs `anthropic[bedrock]` |
 
 How D9 is kept:
 
@@ -130,7 +132,7 @@ Short-term memory is the message list of one conversation, held in the container
 | U3 | The IAM statement for the Runtime role (`bedrock-mantle:CreateInference`, resource `*`) | **Not reached yet** - the org-level SCP denies the call before this policy is evaluated. See "Fourth review" |
 | U4 | The path through the Gateway to the container | **Answered:** `{gateway_url}/{TargetName}/invocations`. See "Fourth review" |
 | U5 | `cdk synth`/`cdk deploy` | **Answered: clean, twice.** See "Fourth review" |
-| U6 | *(found during the run, not anticipated here)* `GatewayClient` over HTTP/1.1 | **Found and fixed.** See "Fourth review" |
+| U6 | *(found during the run, not anticipated here)* identity over HTTP/1.1 | **Found, and the real cause confirmed.** See "Fourth review" |
 
 **Runbook: stage 3**
 
@@ -140,11 +142,11 @@ Use the shell variables and the `token` function from "Runbook: stage 2 on anoth
 
 ```bash
 git pull
-pip install pytest boto3 "anthropic[bedrock]" "httpx[http2]"
+pip install pytest boto3 "anthropic[bedrock]"
 make eval
 ```
 
-Expected result: 66 passed.
+Expected result: 71 passed (the interceptor fix added 5 more).
 
 **2. Check model access**
 
