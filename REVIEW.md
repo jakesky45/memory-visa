@@ -119,8 +119,28 @@ on the same Cognito pool, with its own policy engine, one Lambda and two tools. 
 3. Liam checks in session X, Maya reads in session X: expect refused, if sessions are per caller. This is the test of the quote in the blog.
 4. Maya checks, waits past the window, reads: expect refused.
 
-About half a day. Recommended before the talk only if the Summit date leaves room (D8). It
-should not go into the main path first, because of the header on every request.
+**The spike is written (23 November 2026). Not yet run.** It is its own CDK app, so it
+does not build or touch the main stacks and needs no Docker. It uses the main stack's
+Cognito pool, and makes two throwaway users with a random password.
+
+| File | What it is |
+|---|---|
+| `cdk/spike_app.py`, `cdk/stacks/dogwood_spike_stack.py` | A second Gateway, its own policy engine, one Lambda, three tools, a plain permit for `check_grant`. `cdk synth` passes |
+| `spike/spike_tools.py` | `check_grant`, `visa_read_a`, `visa_read_b` |
+| `spike/dogwood_spike.py` | `policies` creates the two temporal policies and prints any error from AWS; `test` runs ten checks and prints expected against got; `teardown` deletes the policies and the users |
+
+```bash
+pip install "aws-cdk-lib>=2.170.0" constructs boto3
+cd cdk && npx cdk --app "python3 spike_app.py" deploy MemoryVisaDogwoodSpike --require-approval never && cd ..
+python3 spike/dogwood_spike.py policies
+python3 spike/dogwood_spike.py test          # about two minutes; check 9 waits for the window
+python3 spike/dogwood_spike.py teardown
+cd cdk && npx cdk --app "python3 spike_app.py" destroy MemoryVisaDogwoodSpike --force && cd ..
+```
+
+Check 4 is the one that matters: B checks in session X, then A reads in session X. DENY
+means sessions are per caller, as the AWS page says. ALLOW means one session holds two
+callers, and a policy could see Liam's approval directly.
 
 ### Seventh review: people or agents
 
