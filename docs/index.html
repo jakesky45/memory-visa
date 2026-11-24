@@ -1078,16 +1078,16 @@ python3 demo/publish_boundary_demo.py     # IAM refuses a direct write outside a
 
     <p><code>tools/list</code> shows all ten:</p>
 
-    <pre><code>request_access
-list_pending
-approve_access
-deny_access
-revoke_access
-whoami
-memory_search
-memory_write
-grant_activity
-publish_fact</code></pre>
+    <pre><code>request_access   ask for a time-boxed grant
+list_pending     see requests waiting on you
+approve_access   grant it, as the owner
+deny_access      refuse it, as the owner
+revoke_access    pull a grant back early
+whoami           your own effective access, live
+memory_search    read, scoped by what you may see
+memory_write     write to your own namespace
+grant_activity   what was done under a grant
+publish_fact     one fact, for the whole org</code></pre>
 
     <aside class="note"><strong>Shell:</strong> a tool's result is JSON inside a JSON string, double-escaped. Print a captured response with <code>printf '%s'</code>, not zsh's <code>echo</code> - it drops a backslash level and makes valid JSON look broken. The <code>call</code> helper above pipes straight into <code>jq</code>, so this won't bite you there.</aside>
 
